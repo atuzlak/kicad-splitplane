@@ -1,0 +1,21 @@
+{
+  "$schema": "https://go.kicad.org/api/schemas/v1",
+  "identifier": "ch.ethz.atuzlak.splitplane",
+  "name": "kicad-splitplane",
+  "description": "Split a power layer into one continuous copper zone per net, computed from the via positions",
+  "runtime": {
+    "type": "python"
+  },
+  "actions": [
+    {
+      "identifier": "split-plane",
+      "name": "Split power plane",
+      "description": "Create one continuous zone per supply net on a shared power layer",
+      "show-button": true,
+      "scopes": ["pcb"],
+      "entrypoint": "splitplane_action.py",
+      "icons-light": ["icons/splitplane-24.png", "icons/splitplane-48.png"],
+      "icons-dark": ["icons/splitplane-dark-24.png", "icons/splitplane-dark-48.png"]
+    }
+  ]
+}

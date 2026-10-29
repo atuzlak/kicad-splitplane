@@ -1,0 +1,28 @@
+{
+  "$schema": "https://go.kicad.org/pcm/schemas/v2",
+  "name": "kicad-splitplane",
+  "description": "Split a power layer into one continuous zone per net",
+  "description_full": "On a board where several supplies share one inner power layer, kicad-splitplane computes exactly one continuous copper zone per net from the positions of its vias and through-hole pads, keeps foreign vias out of every zone and writes the zones into the open board as a single undo step. A preview shows the split before anything is written.",
+  "identifier": "ch.ethz.atuzlak.splitplane",
+  "type": "plugin",
+  "author": {
+    "name": "Aleksandar Tuzlak",
+    "contact": {
+      "web": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/"
+    }
+  },
+  "license": "MIT",
+  "resources": {
+    "Github": "https://github.com/atuzlak/kicad-splitplane",
+    "Documentation": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/"
+  },
+  "tags": ["power", "zone", "plane", "copper"],
+  "versions": [
+    {
+      "version": "VERSION",
+      "status": "testing",
+      "kicad_version": "9.0",
+      "runtime": "ipc"
+    }
+  ]
+}

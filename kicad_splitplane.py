@@ -11,6 +11,7 @@ partitions the layer so that
 
 It reads a .kicad_pcb file (KiCad 7-10 format), writes the zones into a copy
 of the board and renders a preview image. No KiCad installation is needed.
+The same code also runs as a KiCad 9+ plugin (see plugin/).
 
 CLI
 ---
@@ -46,7 +47,7 @@ from shapely import contains_xy
 from shapely.geometry import LineString, MultiPoint, Point, Polygon, box
 from shapely.ops import nearest_points, polygonize, unary_union, voronoi_diagram
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 
 # =============================================================================
@@ -138,6 +139,12 @@ def collect_seeds(board, layer, nets, include_smd=False):
 
 def list_power_candidates(text: str) -> list[tuple[str, int, int]]:
     """Nets that look like supplies: (name, #vias/THT pads, #SMD pads), sorted."""
+    pat = re.compile(r"(^[+-]?\d+(\.\d+)?V\d*$)|(^[+-]?\d+V\d+$)|VCC|VDD|VBUS|VBAT|VIN|PWR|^V[A-Z]*$", re.I)
+    return [t for t in list_nets(text) if pat.search(t[0])]
+
+
+def list_nets(text: str) -> list[tuple[str, int, int]]:
+    """All named nets with pads/vias: (name, #vias/THT pads, #SMD pads), sorted."""
     board = parse_sexpr(text)
     table = net_table(board)
     tht, smd = defaultdict(int), defaultdict(int)
@@ -152,9 +159,8 @@ def list_power_candidates(text: str) -> list[tuple[str, int, int]]:
                 tht[n] += 1
             elif pad[2] == "smd":
                 smd[n] += 1
-    pat = re.compile(r"(^[+-]?\d+(\.\d+)?V\d*$)|(^[+-]?\d+V\d+$)|VCC|VDD|VBUS|VBAT|VIN|PWR|^V[A-Z]*$", re.I)
     names = {n for n in set(tht) | set(smd)
-             if n and pat.search(n) and not n.lower().startswith(("net-", "unconnected"))}
+             if n and not n.lower().startswith(("net-", "unconnected"))}
     return sorted(((n, tht[n], smd[n]) for n in names), key=lambda t: -(t[1] + t[2]))
 
 
@@ -398,13 +404,17 @@ def _zone_sexpr(poly, net, layer, table, gap, prio):
             f'\t\t(polygon (pts {pts}))\n\t)\n')
 
 
-def insert_zones(text, regions, layer, table, gap):
-    # Holes are not written; smaller zones get higher priority so that an
-    # island enclosed by a bigger zone always wins the fill.
+def zone_parts(regions):
+    """[(polygon, net, priority)] to write as zones. Holes are not written;
+    smaller zones get higher priority so that an island enclosed by a bigger
+    zone always wins the fill."""
     parts = [(p, n) for n, r in regions.items() for p in _parts(r) if p.area > 0.01]
     parts.sort(key=lambda t: t[0].area, reverse=True)
-    zones = "".join(_zone_sexpr(p.simplify(0.05), n, layer, table, gap, k)
-                    for k, (p, n) in enumerate(parts))
+    return [(p.simplify(0.05), n, k) for k, (p, n) in enumerate(parts)]
+
+
+def insert_zones(text, regions, layer, table, gap):
+    zones = "".join(_zone_sexpr(p, n, layer, table, gap, k) for p, n, k in zone_parts(regions))
     end = text.rstrip().rfind(")")
     return text[:end] + zones + ")\n"
 
@@ -420,9 +430,9 @@ class Result:
     log: list = field(default_factory=list)
 
 
-def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
-            include_smd=False, plain=False, keep_old=False, progress=None) -> Result:
-    """Full pipeline on board text. Raises ValueError on unusable input."""
+def compute(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
+            include_smd=False, plain=False, progress=None) -> Result:
+    """Partition only; result.board_text is None. Raises ValueError on unusable input."""
     log = []
     nets = list(dict.fromkeys(nets))
     if len(nets) < 2:
@@ -443,12 +453,19 @@ def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
     else:
         regions = connected_partition(seeds, outline, gap, edge, log, res=res, progress=progress)
     ok = check(regions, seeds, min_neck, log)
+    return Result(None, regions, seeds, outline, layer, ok, log)
+
+
+def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
+            include_smd=False, plain=False, keep_old=False, progress=None) -> Result:
+    """Full pipeline on board text: compute() + write the zones into the text."""
+    r = compute(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, progress)
     if not keep_old:
         text, n_old = strip_old_zones(text, layer, set(nets))
         if n_old:
-            log.append(f"removed {n_old} existing zone(s) of these nets on {layer}")
-    out = insert_zones(text, regions, layer, net_table(board), gap)
-    return Result(out, regions, seeds, outline, layer, ok, log)
+            r.log.append(f"removed {n_old} existing zone(s) of these nets on {layer}")
+    r.board_text = insert_zones(text, r.regions, layer, net_table(parse_sexpr(text)), gap)
+    return r
 
 
 PALETTE = ["#2a6fdb", "#e8833a", "#3aa856", "#d64545", "#8a5cc7", "#c2a12b", "#2ab3b3", "#c25599"]
@@ -460,6 +477,14 @@ def render_png(result: Result, path_or_buffer, title=None):
     import matplotlib.pyplot as plt
 
     fig, ax = plt.subplots(figsize=(8, 6))
+    draw(result, ax, title)
+    fig.tight_layout()
+    fig.savefig(path_or_buffer, dpi=130, format="png")
+    plt.close(fig)
+
+
+def draw(result: Result, ax, title=None):
+    """Plot zones and seeds onto a matplotlib Axes."""
     ax.plot(*result.outline.exterior.xy, color="#222", lw=1.5)
     for i, (net, r) in enumerate(sorted(result.regions.items())):
         c = PALETTE[i % len(PALETTE)]
@@ -475,9 +500,6 @@ def render_png(result: Result, path_or_buffer, title=None):
     ax.set_title(title or f"{result.layer}: one zone per net")
     ax.set_xlabel("x [mm]")
     ax.set_ylabel("y [mm]")
-    fig.tight_layout()
-    fig.savefig(path_or_buffer, dpi=130, format="png")
-    plt.close(fig)
 
 
 # =============================================================================

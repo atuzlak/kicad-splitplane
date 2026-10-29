@@ -40,6 +40,19 @@ pip install git+https://github.com/atuzlak/kicad-splitplane
 kicad-splitplane board.kicad_pcb --nets 5V 3.3V VBUS
 ```
 
+## KiCad plugin
+
+The same tool also runs inside the PCB editor (KiCad 9 or newer). It works on the open board, shows a preview and writes the zones directly into the board as **one undo step**, so Ctrl+Z removes them again.
+
+1. In KiCad: **Preferences → Plugins → Enable KiCad API**.
+2. Download `kicad-splitplane-<version>-pcm.zip` from the releases (or build it with `python plugin/build.py`).
+3. **Plugin and Content Manager → Install from File…** and pick the zip. KiCad installs the Python dependencies on first use, which takes a minute.
+4. In the PCB editor, click the **Split power plane** toolbar button, pick the layer and nets, press **Preview**, then **Apply**.
+
+The dialog has the same options as the command line. It uses the wxPython that ships with KiCad, so nothing else needs to be installed.
+
+For development, link the folder into KiCad's plugin directory instead of installing the zip (e.g. `~/.local/share/kicad/10.0/plugins/`, or `~/.var/app/org.kicad.KiCad/data/kicad/10.0/plugins/` for the Flatpak; a Flatpak cannot follow a symlink, so copy the folder together with `kicad_splitplane.py` there), or run `python plugin/splitplane_action.py` while KiCad has a board open.
+
 ## Options
 
 | Option | Default | Meaning |
@@ -92,12 +105,12 @@ sp.render_png(r, "preview.png")
 - Awkward zones usually mean awkward via placement. Keep each net's vias grouped and use short fanout tracks.
 - Signals on the neighbouring layer use the split plane as return path; avoid routing them across the gaps.
 - Zones are written as outlines without holes. Smaller zones get a higher priority so an enclosed island still fills; check the order in KiCad's Zone Manager.
-- Tested with KiCad 10 files; KiCad 7–9 net syntax is supported too. Arcs in the outline are approximated, blind/buried vias are handled roughly.
+- The command line tool is tested with KiCad 10 files; KiCad 7–9 net syntax is supported too. The plugin needs KiCad 9 or newer. Arcs in the outline are approximated, blind/buried vias are handled roughly.
 
 ## Tests
 
 ```bash
-python -m pytest tests/
+python -m pytest tests/        # plugin tests run when kicad-python is installed
 ```
 
 ## Feedback and contact
