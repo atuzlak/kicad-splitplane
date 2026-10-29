@@ -1,0 +1,32 @@
+# Push a tag v<version> (matching __version__ in kicad_splitplane.py) to build
+# the KiCad PCM package and publish it as a GitHub release asset.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check tag matches version
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' kicad_splitplane.py)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != v$v"; exit 1; }
+      - run: pip install -r requirements.txt pytest
+      - run: python -m pytest tests/
+      - run: python plugin/build.py
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" build/kicad-splitplane-*-pcm.zip \
+            build/pcm/*/metadata.json --title "$GITHUB_REF_NAME" --generate-notes

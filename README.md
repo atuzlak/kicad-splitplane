@@ -45,9 +45,10 @@ kicad-splitplane board.kicad_pcb --nets 5V 3.3V VBUS
 The same tool also runs inside the PCB editor (KiCad 9 or newer). It works on the open board, shows a preview and writes the zones directly into the board as **one undo step**, so Ctrl+Z removes them again.
 
 1. In KiCad: **Preferences → Plugins → Enable KiCad API**.
-2. Download `kicad-splitplane-<version>-pcm.zip` from the releases (or build it with `python plugin/build.py`).
-3. **Plugin and Content Manager → Install from File…** and pick the zip. KiCad installs the Python dependencies on first use, which takes a minute.
-4. In the PCB editor, click the **Split power plane** toolbar button, pick the layer and nets, press **Preview**, then **Apply**.
+2. Open the **Plugin and Content Manager**, search for **kicad-splitplane** under *Plugins* and press **Install**, then **Apply Pending Changes**.
+   Or download `kicad-splitplane-<version>-pcm.zip` from the [releases](https://github.com/atuzlak/kicad-splitplane/releases) and use **Install from File…**.
+   KiCad installs the Python dependencies on first use, which takes a minute.
+3. In the PCB editor, click the **Split power plane** toolbar button, pick the layer and nets, press **Preview**, then **Apply**.
 
 The dialog has the same options as the command line. It uses the wxPython that ships with KiCad, so nothing else needs to be installed.
 

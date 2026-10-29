@@ -8,19 +8,21 @@
   "author": {
     "name": "Aleksandar Tuzlak",
     "contact": {
-      "web": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/"
+      "web": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/",
+      "email": "atuzlak@ethz.ch"
     }
   },
   "license": "MIT",
   "resources": {
     "Github": "https://github.com/atuzlak/kicad-splitplane",
-    "Documentation": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/"
+    "Documentation": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/",
+    "Bug Tracker": "https://github.com/atuzlak/kicad-splitplane/issues"
   },
   "tags": ["power", "zone", "plane", "copper"],
   "versions": [
     {
       "version": "VERSION",
-      "status": "testing",
+      "status": "stable",
       "kicad_version": "9.0",
       "runtime": "ipc"
     }
