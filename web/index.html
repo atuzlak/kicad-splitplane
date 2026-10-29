@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>kicad-splitplane</title>
+<meta name="description" content="Split a KiCad power layer into one continuous copper zone per voltage.">
+<meta property="og:title" content="kicad-splitplane: KiCad split power planes, automatically">
+<meta property="og:description" content="One continuous zone per voltage, computed from your vias. Python library and command-line tool.">
+<meta property="og:image" content="img/comparison.png">
+<style>
+body {
+  margin: 0; background: #fff; color: #222;
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+h1 { font-size: 2em; margin: 0.6em 0 0.2em; }
+h2 { font-size: 1.35em; margin: 2.2em 0 0.6em; padding-bottom: 0.25em; border-bottom: 1px solid #e5e5e5; }
+h3 { font-size: 1.05em; margin: 1.5em 0 0.4em; }
+p, ul, ol { margin: 0 0 0.9em; }
+li { margin-bottom: 0.3em; }
+a { color: #0645ad; }
+code, pre, kbd, td:first-child { font-family: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 0.88em; }
+:not(pre) > code { background: #f3f3f3; padding: 0.1em 0.3em; border-radius: 3px; }
+pre { background: #f6f6f6; border-radius: 4px; padding: 0.8em 1em; overflow-x: auto; line-height: 1.45; margin: 0 0 1em; }
+img { max-width: 100%; height: auto; display: block; }
+figure { margin: 1.2em 0; }
+figure img { border: 1px solid #e5e5e5; }
+figcaption { font-size: 0.9em; color: #555; margin-top: 0.4em; }
+table { border-collapse: collapse; width: 100%; font-size: 0.93em; margin: 0 0 1em; }
+th, td { text-align: left; padding: 0.4em 0.6em; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
+td:first-child { white-space: nowrap; }
+
+.crumb { font-size: 0.9em; color: #666; }
+.crumb a { color: #666; }
+.lede { font-size: 1.1em; color: #444; }
+
+.content { max-width: 50em; margin: 0 auto; padding: 1.5em 1.25em 4em; }
+
+.small { font-size: 0.88em; color: #666; }
+
+footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #e5e5e5; font-size: 0.88em; color: #666; }
+footer a { color: #666; }
+</style>
+</head>
+<body>
+
+<div class="content">
+<div class="crumb"><a href="../">Aleksandar Tuzlak</a> / projects / kicad-splitplane</div>
+
+<main>
+<h1 id="overview">kicad-splitplane</h1>
+<p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are.</p>
+
+
+<figure>
+  <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone.">
+  <figcaption>Same board, same vias. Left: plain Voronoi split, where nets break into islands. Right: kicad-splitplane, with every voltage in one piece.</figcaption>
+</figure>
+
+<p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it first connects each net's vias with a path, then splits the layer like a Voronoi diagram of those paths, so no net breaks into islands.</p>
+
+<h2 id="cli">Command line</h2>
+<p>Needs Python 3.9+. Works on Linux, macOS and Windows; you don't need KiCad installed.</p>
+<h3 id="install">Installation and usage</h3>
+<pre><code>git clone https://github.com/atuzlak/kicad-splitplane
+cd kicad-splitplane
+pip install -r requirements.txt
+
+# which supply nets does the board have?
+python kicad_splitplane.py board.kicad_pcb --list-nets
+
+# split In2.Cu between three nets
+python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
+<p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones) and <code>board_splitplane.png</code> (preview). Your original file is left alone.</p>
+
+<h3 id="options">Options</h3>
+<table>
+  <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td>--layer</td><td>In2.Cu</td><td>Copper layer to split</td></tr>
+    <tr><td>--nets</td><td></td><td>Supply nets sharing that layer</td></tr>
+    <tr><td>--gap</td><td>0.5 mm</td><td>Copper gap between neighbouring zones</td></tr>
+    <tr><td>--edge</td><td>0.5 mm</td><td>Clearance to the board edge</td></tr>
+    <tr><td>--min-neck</td><td>1.0 mm</td><td>Warn where a zone gets narrower than this</td></tr>
+    <tr><td>--res</td><td>0.5 mm</td><td>Routing grid; try 0.3 to 0.6 if a via gets trapped</td></tr>
+    <tr><td>--include-smd</td><td>off</td><td>Treat SMD pads as vias (preview before fanout)</td></tr>
+    <tr><td>--plain</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
+    <tr><td>--keep-old</td><td>off</td><td>Keep existing zones of these nets on the layer</td></tr>
+  </tbody>
+</table>
+
+<h3 id="python">From Python</h3>
+<pre><code>import kicad_splitplane as sp
+
+r = sp.process(open("board.kicad_pcb").read(), "In2.Cu", ["5V", "3.3V", "VBUS"])
+print(r.log)
+sp.render_png(r, "preview.png")</code></pre>
+
+<h2 id="notes">Good to know</h2>
+<ul>
+  <li>If the zones look awkward, move the vias: keep each net's vias together and use short fanout tracks.</li>
+  <li>Don't route signals on the neighbouring layer across the gaps between zones. The split plane is their return path.</li>
+  <li>Smaller zones get higher priority, so an island inside a bigger zone still fills correctly. Check the order in KiCad's Zone Manager.</li>
+  <li>Tested with KiCad 10. Files from KiCad 7 to 9 work too. Arcs in the board outline are approximated.</li>
+</ul>
+
+<h2 id="contact">Feedback and contact</h2>
+<p>Found a bug, have an idea for an improvement, or interested in working together on this? I'd be glad to hear from you. Write me an email at <a href="mailto:atuzlak@ethz.ch">atuzlak@ethz.ch</a>.</p>
+<p>Bug reports and pull requests are also welcome on <a href="https://github.com/atuzlak/kicad-splitplane">GitHub</a>.</p>
+</main>
+
+<footer>
+  Aleksandar Tuzlak · ETH Zürich · MIT License ·
+  <a href="https://github.com/atuzlak/kicad-splitplane">GitHub</a> ·
+  <a href="../">Home</a>
+</footer>
+</div>
+
+</body>
+</html>

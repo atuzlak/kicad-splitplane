@@ -1,0 +1,9 @@
+dist/
+__pycache__/
+*.pyc
+*_splitplane.kicad_pcb
+*_splitplane.png
+*.kicad_pcb-bak
+*.kicad_prl
+.venv/
+UPLOAD.md
