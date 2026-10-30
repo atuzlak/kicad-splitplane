@@ -47,7 +47,7 @@ from shapely import contains_xy
 from shapely.geometry import LineString, MultiPoint, Point, Polygon, box
 from shapely.ops import nearest_points, polygonize, unary_union, voronoi_diagram
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 
 # =============================================================================

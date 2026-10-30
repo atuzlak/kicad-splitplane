@@ -99,9 +99,10 @@ def run_dialog(board):
     # wxPython ships with KiCad, and KiCad creates plugin environments with
     # --system-site-packages, so it is available without installing anything.
     import wx
-    import matplotlib
-    matplotlib.use("WXAgg")
-    from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg
+    import numpy as np
+    # Not the WXAgg backend: it imports wx.svg, which KiCad's wxPython lacks.
+    # The figure is rendered with Agg and painted as a bitmap instead.
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
     text = board.get_as_string()
@@ -175,8 +176,35 @@ def run_dialog(board):
 
     # --- preview and log
     fig = Figure(figsize=(6, 4.5), dpi=100)
-    canvas = FigureCanvasWxAgg(panel, -1, fig)
-    log = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(-1, 120))
+    agg = FigureCanvasAgg(fig)
+    canvas = wx.Panel(panel, size=(600, 450))
+    canvas.SetBackgroundColour(wx.WHITE)
+    view = {"bmp": None}
+
+    def render(_=None):
+        w, h = canvas.GetClientSize()
+        if w < 10 or h < 10:
+            return
+        fig.set_size_inches(w / fig.dpi, h / fig.dpi)
+        if fig.axes:
+            fig.tight_layout()
+        agg.draw()
+        rgba = np.asarray(agg.buffer_rgba())
+        view["bmp"] = wx.Bitmap.FromBufferRGBA(rgba.shape[1], rgba.shape[0], rgba.tobytes())
+        canvas.Refresh()
+
+    def paint(_):
+        dc = wx.PaintDC(canvas)
+        if view["bmp"]:
+            dc.DrawBitmap(view["bmp"], 0, 0)
+
+    def resize(event):
+        wx.CallAfter(render)
+        event.Skip()
+
+    canvas.Bind(wx.EVT_PAINT, paint)
+    canvas.Bind(wx.EVT_SIZE, resize)
+    log =wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY, size=(-1, 120))
     log.SetFont(wx.Font(9, wx.FONTFAMILY_TELETYPE, wx.FONTSTYLE_NORMAL, wx.FONTWEIGHT_NORMAL))
     right = wx.BoxSizer(wx.VERTICAL)
     right.Add(canvas, 1, wx.EXPAND)
@@ -243,8 +271,7 @@ def run_dialog(board):
             state.update(key=repr(key), result=r)
             fig.clear()
             sp.draw(r, fig.add_subplot(111))
-            fig.tight_layout()
-            canvas.draw()
+            render()
             log.SetValue("\n".join(r.log))
             set_status("OK: one zone per net." if r.ok else "Warnings, see log below.")
             if then:
