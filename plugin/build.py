@@ -37,6 +37,7 @@ EPOCH = (2026, 1, 1, 0, 0, 0)
 def add(z, name, data):
     info = zipfile.ZipInfo(name, EPOCH)
     info.compress_type = zipfile.ZIP_DEFLATED
+    info.create_system = 3  # Unix, as on CI; Windows would write 0
     info.external_attr = 0o644 << 16
     z.writestr(info, data)
 
