@@ -2,7 +2,7 @@
 
 Split a KiCad power layer into **exactly one continuous copper zone per voltage**, computed from where your vias are.
 
-**[Documentation →](https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/)**
+**[Documentation →](https://people.ee.ethz.ch/~atuzlak/kicad-splitplane)**
 
 ![Plain Voronoi vs. kicad-splitplane on the demo board](web/img/comparison.png)
 

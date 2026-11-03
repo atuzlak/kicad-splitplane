@@ -19,7 +19,7 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane/"
+Homepage = "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane"
 Source = "https://github.com/atuzlak/kicad-splitplane"
 
 [project.scripts]

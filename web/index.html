@@ -45,18 +45,18 @@ h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
 .side { display: none; }
 .side ul { list-style: none; margin: 0; padding: 0; }
 .side li { margin: 0; }
-.side a { display: block; padding: 0.22em 0; color: #777; text-decoration: none; }
-.side a:hover { color: #222; }
+.side a { display: block; padding: 0.1em 0; color: #0645ad; text-decoration: none; }
+.side a:hover { text-decoration: underline; }
 .side a.active { color: #222; font-weight: 600; }
-.side ul ul { display: none; margin: 0.05em 0 0.35em 0.9em; }
+.side ul ul { display: none; margin: 0 0 0.2em 1em; }
 .side li.open > ul { display: block; }
-.side ul ul a { font-size: 0.93em; padding: 0.12em 0; }
-.side .title { font-size: 0.75em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #999; margin: 0 0 0.8em; }
+.side ul ul a { font-size: 0.93em; }
+.side .title { font-weight: 600; padding-bottom: 0.25em; margin: 0 0 0.4em; border-bottom: 1px solid #e5e5e5; }
 @media (min-width: 64em) {
-  .page { display: grid; grid-template-columns: 14em minmax(0, 50em); gap: 1.5em; max-width: 66em; margin: 0 auto; }
-  .page .content { margin: 0; }
+  .page { display: grid; grid-template-columns: 12em minmax(0, 50em); column-gap: 2em; max-width: 64em; margin: 0 auto; }
+  .page .content { margin: 0; padding-left: 0; }
   .side { display: block; }
-  .side nav { position: sticky; top: 0; padding: 5.5em 0 1em 1.25em; font-size: 0.9em; max-height: 100vh; overflow-y: auto; box-sizing: border-box; }
+  .side nav { position: sticky; top: 0; padding: 1.5em 0 1em 1.25em; max-height: 100vh; overflow-y: auto; box-sizing: border-box; }
   .toc { display: none; }
 }
 
