@@ -45,18 +45,18 @@ h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
 .side { display: none; }
 .side ul { list-style: none; margin: 0; padding: 0; }
 .side li { margin: 0; }
-.side a { display: block; padding: 0.1em 0; color: #0645ad; text-decoration: none; }
-.side a:hover { text-decoration: underline; }
-.side a.active { color: #222; font-weight: 600; }
-.side ul ul { display: none; margin: 0 0 0.2em 1em; }
-.side li.open > ul { display: block; }
-.side ul ul a { font-size: 0.93em; }
-.side .title { font-weight: 600; padding-bottom: 0.25em; margin: 0 0 0.4em; border-bottom: 1px solid #e5e5e5; }
+.side { background: #f7f7f7; border-right: 1px solid #e5e5e5; }
+.side a { display: block; padding: 0.3em 1.5em; color: #333; text-decoration: none; border-left: 3px solid transparent; }
+.side a:hover { background: #eee; }
+.side a.active { color: #0645ad; font-weight: 600; background: #eef2f9; border-left-color: #0645ad; }
+.side ul ul a { padding-left: 2.6em; font-size: 0.92em; color: #555; }
+.side .title { font-size: 1.15em; font-weight: 700; padding: 0 1.5em; margin: 0 0 0.8em; }
+.side .title a { padding: 0; border: 0; color: #222; }
+.side .title a:hover { background: none; }
 @media (min-width: 64em) {
-  .page { display: grid; grid-template-columns: 12em minmax(0, 50em); column-gap: 2em; max-width: 64em; margin: 0 auto; }
-  .page .content { margin: 0; padding-left: 0; }
-  .side { display: block; }
-  .side nav { position: sticky; top: 0; padding: 1.5em 0 1em 1.25em; max-height: 100vh; overflow-y: auto; box-sizing: border-box; }
+  .page { display: grid; grid-template-columns: 17em minmax(0, 1fr); }
+  .side { display: block; font-size: 1.05em; }
+  .side nav { position: sticky; top: 0; height: 100vh; padding: 1.4em 0 1.5em; overflow-y: auto; box-sizing: border-box; }
   .toc { display: none; }
 }
 
@@ -71,7 +71,7 @@ footer a { color: #666; }
 <div class="page">
 <aside class="side">
 <nav aria-label="Contents">
-  <div class="title">Contents</div>
+  <div class="title"><a href="#overview">kicad-splitplane</a></div>
   <ul>
     <li><a href="#overview">Overview</a></li>
     <li><a href="#plugin">KiCad plugin</a>
@@ -266,9 +266,6 @@ sp.render_png(r, "preview.png")</code></pre>
     if (cur === current) return;
     if (current) links[current.id].classList.remove("active");
     links[cur.id].classList.add("active");
-    // Show the sub-items of the section in view only.
-    document.querySelectorAll(".side li.open").forEach(function (li) { li.classList.remove("open"); });
-    links[cur.id].closest(".side nav > ul > li").classList.add("open");
     current = cur;
   }
   document.addEventListener("scroll", update, { passive: true });
