@@ -296,11 +296,14 @@ def run_dialog(board):
             error("".join(traceback.format_exception(e)))
             return
         # The API cannot set net colours, so explain how to show them.
-        colors = ", ".join(f"{n} {c}" for n, c in sp.net_colors(r.regions).items())
+        colors = [f"       {n:<12} {c}" for n, c in sp.net_colors(r.regions).items()]
         log.SetValue("\n".join(r.log + lines + [
-            "", "Undo in KiCad with Ctrl+Z. Run DRC to check.",
-            "Zones in their own colours: Appearance panel > Nets, right-click a net > Set Net Color,",
-            f"then set Net colors to 'All'. Preview colours: {colors}"]))
+            "", "Undo in KiCad with Ctrl+Z. Run DRC to check.", "",
+            "Each zone in its own colour (a plugin cannot set this, it takes a minute by hand):",
+            "  1. Appearance panel (right side) > Nets tab",
+            "  2. right-click each net > Set Net Color..., e.g. the preview colours:",
+            *colors,
+            "  3. at the bottom of the Nets tab set 'Net colors' to All"]))
         set_status("Zones added to the board.")
         state["key"] = None  # the board changed
 
