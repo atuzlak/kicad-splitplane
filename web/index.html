@@ -139,6 +139,7 @@ footer a { color: #666; }
   <li>Press <strong>Preview</strong>. The split appears on the right, other nets' pads and vias in grey, and the log below. <em>OK: one zone per net</em> means the split is clean.</li>
   <li>Press <strong>Apply</strong>. The zones are written into the board and filled. Existing zones of the selected nets on that layer are replaced.</li>
   <li>Close the window, check the result and run the <strong>Design Rules Checker</strong>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> removes all zones of one run at once.</li>
+  <li><strong>Optional: zones in their own colours.</strong> In the <strong>Appearance</strong> panel open the <strong>Nets</strong> tab, right-click each supply net → <strong>Set Net Color…</strong>, and set <strong>Net colors</strong> at the bottom to <strong>All</strong>. The log after Apply lists the colours of the preview. (The command line does this for you.)</li>
 </ol>
 
 <h3 id="dialog">Settings in the dialog</h3>
@@ -181,7 +182,7 @@ python kicad_splitplane.py board.kicad_pcb --list-nets
 
 # split In2.Cu between three nets
 python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
-<p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones) and <code>board_splitplane.png</code> (preview). Your original file is left alone. Open the new board in KiCad and press <kbd>B</kbd> to fill the zones.</p>
+<p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones), <code>board_splitplane.png</code> (preview) and a copy of the project files that keeps your design rules and shows every zone in its preview colour. Your original files are left alone. Open the new board in KiCad and press <kbd>B</kbd> to fill the zones.</p>
 
 <h3 id="options">Options</h3>
 <table>
@@ -197,6 +198,7 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</c
     <tr><td>--no-smooth</td><td>off</td><td>Keep the raw grid outlines instead of 0°/45°/90° edges</td></tr>
     <tr><td>--plain</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
     <tr><td>--keep-old</td><td>off</td><td>Keep existing zones of these nets on the layer</td></tr>
+    <tr><td>--no-colors</td><td>off</td><td>Don't colour the nets in the copied project file</td></tr>
   </tbody>
 </table>
 

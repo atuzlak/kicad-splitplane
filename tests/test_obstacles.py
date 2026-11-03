@@ -64,3 +64,18 @@ def test_check_reports_zone_over_foreign_pad():
     log = []
     assert not sp.check(regions, [(7, 7, "A"), (0, 0, "B")], 1.0, log, holes)
     assert any("runs over a B pad" in line for line in log), log
+
+
+def test_write_project_copies_settings_and_sets_net_colours(tmp_path):
+    import json
+    (tmp_path / "b.kicad_pro").write_text(json.dumps({"meta": {"filename": "b.kicad_pro"},
+                                                     "net_settings": {"net_colors": None, "classes": []}}))
+    (tmp_path / "b.kicad_prl").write_text(json.dumps({"board": {"net_color_mode": 1}}))
+    out = sp.write_project(str(tmp_path / "b.kicad_pcb"), str(tmp_path / "b_split.kicad_pcb"), ["5V", "3.3V"])
+    assert len(out) == 2
+    pro = json.loads((tmp_path / "b_split.kicad_pro").read_text())
+    assert pro["meta"]["filename"] == "b_split.kicad_pro"
+    assert set(pro["net_settings"]["net_colors"]) == {"5V", "3.3V"}
+    assert pro["net_settings"]["classes"] == []                        # rest of the project kept
+    assert json.loads((tmp_path / "b_split.kicad_prl").read_text())["board"]["net_color_mode"] == 0
+    assert json.loads((tmp_path / "b.kicad_pro").read_text())["net_settings"]["net_colors"] is None

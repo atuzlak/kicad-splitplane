@@ -295,7 +295,12 @@ def run_dialog(board):
             set_status("Failed.")
             error("".join(traceback.format_exception(e)))
             return
-        log.SetValue("\n".join(r.log + lines + ["", "Undo in KiCad with Ctrl+Z. Run DRC to check."]))
+        # The API cannot set net colours, so explain how to show them.
+        colors = ", ".join(f"{n} {c}" for n, c in sp.net_colors(r.regions).items())
+        log.SetValue("\n".join(r.log + lines + [
+            "", "Undo in KiCad with Ctrl+Z. Run DRC to check.",
+            "Zones in their own colours: Appearance panel > Nets, right-click a net > Set Net Color,",
+            f"then set Net colors to 'All'. Preview colours: {colors}"]))
         set_status("Zones added to the board.")
         state["key"] = None  # the board changed
 

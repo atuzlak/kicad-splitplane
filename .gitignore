@@ -10,3 +10,5 @@ UPLOAD.md
 build/
 CourseProject*
 imgs/
+*_splitplane.kicad_pro
+*_splitplane.kicad_prl

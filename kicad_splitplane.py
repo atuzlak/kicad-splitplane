@@ -770,6 +770,41 @@ def render_png(result: Result, path_or_buffer, title=None):
     plt.close(fig)
 
 
+def net_colors(nets) -> dict:
+    """{net: '#rrggbb'}, the same colours as the preview."""
+    return {n: PALETTE[i % len(PALETTE)] for i, n in enumerate(sorted(nets))}
+
+
+def write_project(board_path, out_path, nets, colors=True) -> list[str]:
+    """Copy the board's .kicad_pro / .kicad_prl next to `out_path`, so the new
+    board keeps the project's design rules. With `colors`, every net gets its
+    preview colour and KiCad shows net colours on zones (not only ratsnest).
+    KiCad reads these files when it opens the board, so the board must not be
+    open in KiCad at the same time."""
+    import json
+    import os
+    src, dst = (re.sub(r"\.kicad_pcb$", "", p) for p in (board_path, out_path))
+    written = []
+    for ext in (".kicad_pro", ".kicad_prl"):
+        data = json.load(open(src + ext, encoding="utf-8")) if os.path.exists(src + ext) else {}
+        if not data and not colors:
+            continue
+        if ext == ".kicad_pro":
+            data.setdefault("meta", {})["filename"] = os.path.basename(dst + ext)
+            if colors:
+                ns = data.setdefault("net_settings", {})
+                ns["net_colors"] = dict(ns.get("net_colors") or {})
+                for n, c in net_colors(nets).items():
+                    ns["net_colors"][n] = "rgb({}, {}, {})".format(*(int(c[k:k + 2], 16) for k in (1, 3, 5)))
+        elif colors:
+            data.setdefault("board", {})["net_color_mode"] = 0  # 0 = all, 1 = ratsnest only
+        with open(dst + ext, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+            f.write("\n")
+        written.append(dst + ext)
+    return written
+
+
 def draw(result: Result, ax, title=None):
     """Plot zones and seeds onto a matplotlib Axes."""
     ax.plot(*result.outline.exterior.xy, color="#222", lw=1.5)
@@ -811,6 +846,7 @@ def main(argv=None):
     ap.add_argument("--plain", action="store_true", help="skip connecting the vias (faster, may create islands)")
     ap.add_argument("--no-smooth", action="store_true", help="keep the raw grid outlines instead of smooth 45-degree ones")
     ap.add_argument("--keep-old", action="store_true", help="keep existing zones of these nets on the layer")
+    ap.add_argument("--no-colors", action="store_true", help="don't give the nets their preview colours in the project file")
     ap.add_argument("--out", help="output board (default: <board>_splitplane.kicad_pcb)")
     ap.add_argument("--version", action="version", version=__version__)
     a = ap.parse_args(argv)
@@ -838,6 +874,8 @@ def main(argv=None):
     png = re.sub(r"\.kicad_pcb$", "", out) + ".png"
     render_png(r, png)
     print(f"wrote {out}\nwrote {png}")
+    for path in write_project(a.board, out, r.regions, colors=not a.no_colors):
+        print(f"wrote {path}" + ("" if a.no_colors else " (net colours as in the preview)"))
     return 0 if r.ok else 1
 
 

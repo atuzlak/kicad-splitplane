@@ -31,7 +31,7 @@ python kicad_splitplane.py board.kicad_pcb --list-nets                      # fi
 python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS
 ```
 
-This writes `board_splitplane.kicad_pcb` (your board plus the zones; the original is untouched) and `board_splitplane.png` (preview). Open the new board in KiCad, press **B** to fill the zones and run DRC.
+This writes `board_splitplane.kicad_pcb` (your board plus the zones; the original is untouched), `board_splitplane.png` (preview) and a copy of the project files (`board_splitplane.kicad_pro`/`.kicad_prl`) that keeps your design rules and shows every zone in its preview colour. Open the new board in KiCad, press **B** to fill the zones and run DRC.
 
 Or install it as a command:
 
@@ -69,6 +69,7 @@ For development, link the folder into KiCad's plugin directory instead of instal
 | `--no-smooth` | off | Keep the raw grid outlines instead of smooth 0°/45°/90° edges |
 | `--plain` | off | Skip connecting the vias (faster, may create islands) |
 | `--keep-old` | off | Keep existing zones of these nets on the layer (default: replaced) |
+| `--no-colors` | off | Don't colour the nets in the copied project file |
 | `--out` | `<board>_splitplane.kicad_pcb` | Output file |
 
 Exit code is `0` when every net got one clean zone, `1` when there are warnings.
