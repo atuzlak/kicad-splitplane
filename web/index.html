@@ -35,29 +35,52 @@ td:first-child { white-space: nowrap; }
 .crumb { font-size: 0.9em; color: #666; }
 .crumb a { color: #666; }
 .lede { font-size: 1.1em; color: #444; }
-.toc { font-size: 0.93em; }
 .note { background: #f6f8fb; border-left: 3px solid #9bb3d6; padding: 0.6em 0.9em; margin: 0 0 1em; }
 
 .content { max-width: 50em; margin: 0 auto; padding: 1.5em 1.25em 4em; }
 
 html { scroll-behavior: smooth; }
-h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
-.side { display: none; }
+h1[id], h2[id], h3[id] { scroll-margin-top: 3.8em; }
+
+/* Navigation: a bar with a drop-down list on small screens, a docked
+   sidebar on wide ones. */
+.side { position: sticky; top: 0; z-index: 10; background: #f7f7f7; border-bottom: 1px solid #e5e5e5; }
+.side .menu { display: flex; gap: 0.4em; width: 100%; padding: 0.75em 1.25em; border: 0; background: none;
+  font: inherit; font-weight: 600; color: #222; text-align: left; cursor: pointer; }
+.side .menu .here { font-weight: 400; color: #0645ad; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side nav { display: none; max-height: 70vh; overflow-y: auto; padding: 0 0 0.8em; }
+.side.open nav { display: block; }
 .side ul { list-style: none; margin: 0; padding: 0; }
 .side li { margin: 0; }
-.side { background: #f7f7f7; border-right: 1px solid #e5e5e5; }
-.side a { display: block; padding: 0.3em 1.5em; color: #333; text-decoration: none; border-left: 3px solid transparent; }
+.side a { display: block; padding: 0.4em 1.5em; color: #333; text-decoration: none; border-left: 3px solid transparent; }
 .side a:hover { background: #eee; }
 .side a.active { color: #0645ad; font-weight: 600; background: #eef2f9; border-left-color: #0645ad; }
 .side ul ul a { padding-left: 2.6em; font-size: 0.92em; color: #555; }
-.side .title { font-size: 1.15em; font-weight: 700; padding: 0 1.5em; margin: 0 0 0.8em; }
+.side .title { display: none; font-size: 1.15em; font-weight: 700; padding: 0 1.5em; margin: 0 0 0.8em; }
 .side .title a { padding: 0; border: 0; color: #222; }
 .side .title a:hover { background: none; }
 @media (min-width: 64em) {
+  h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
   .page { display: grid; grid-template-columns: 17em minmax(0, 1fr); }
-  .side { display: block; font-size: 1.05em; }
-  .side nav { position: sticky; top: 0; height: 100vh; padding: 1.4em 0 1.5em; overflow-y: auto; box-sizing: border-box; }
-  .toc { display: none; }
+  .side { position: static; font-size: 1.05em; border-bottom: 0; border-right: 1px solid #e5e5e5; }
+  .side .menu { display: none; }
+  .side .title { display: block; }
+  .side nav { display: block; position: sticky; top: 0; height: 100vh; max-height: none; padding: 1.4em 0 1.5em; box-sizing: border-box; }
+  .side a { padding: 0.3em 1.5em; }
+}
+
+/* Phones: less margin, tables as stacked blocks instead of columns. */
+@media (max-width: 40em) {
+  .content { padding: 1em 1em 3em; }
+  h1 { font-size: 1.7em; }
+  h2 { margin-top: 1.8em; }
+  table, tbody, tr, td { display: block; width: auto; }
+  thead { display: none; }
+  tr { padding: 0.55em 0; border-bottom: 1px solid #e5e5e5; }
+  td { border: 0; padding: 0.1em 0; }
+  td:first-child { white-space: normal; font-weight: 600; }
+  .cols3 td:nth-child(2)::before { content: "Default: "; color: #777; }
+  .cols3 td:nth-child(2) { color: #555; font-size: 0.93em; }
 }
 
 .small { font-size: 0.88em; color: #666; }
@@ -70,7 +93,8 @@ footer a { color: #666; }
 
 <div class="page">
 <aside class="side">
-<nav aria-label="Contents">
+<button class="menu" type="button" aria-expanded="false" aria-controls="side-nav">☰ Contents <span class="here"></span></button>
+<nav id="side-nav" aria-label="Contents">
   <div class="title"><a href="#overview">kicad-splitplane</a></div>
   <ul>
     <li><a href="#overview">Overview</a></li>
@@ -112,8 +136,6 @@ footer a { color: #666; }
 
 <p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it connects each net's vias with a path, splits the layer around those paths, and draws the borders with straight 0°/45°/90° edges.</p>
 
-<p class="toc"><a href="#plugin">KiCad plugin</a> · <a href="#usage">Using it in KiCad</a> · <a href="#cli">Command line</a> · <a href="#how">How it works</a> · <a href="#notes">Good to know</a> · <a href="#changes">Changes</a></p>
-
 <h2 id="plugin">KiCad plugin</h2>
 <p>Needs <strong>KiCad 9 or newer</strong> on Windows, macOS or Linux. The plugin works on the board that is open in the PCB editor and writes the zones straight into it as one undo step.</p>
 
@@ -145,7 +167,7 @@ footer a { color: #666; }
 </ol>
 
 <h3 id="dialog">Settings in the dialog</h3>
-<table class="ui">
+<table class="ui cols3">
   <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td>Gap between zones</td><td>0.5 mm</td><td>Copper gap between neighbouring zones</td></tr>
@@ -187,7 +209,7 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</c
 <p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones), <code>board_splitplane.png</code> (preview) and a copy of the project files that keeps your design rules and shows every zone in its preview colour. Your original files are left alone. Open the new board in KiCad and press <kbd>B</kbd> to fill the zones.</p>
 
 <h3 id="options">Options</h3>
-<table>
+<table class="cols3">
   <thead><tr><th>Option</th><th>Default</th><th>What it does</th></tr></thead>
   <tbody>
     <tr><td>--layer</td><td>In2.Cu</td><td>Copper layer to split</td></tr>
@@ -253,12 +275,20 @@ sp.render_png(r, "preview.png")</code></pre>
 </div>
 
 <script>
-// Highlight the section in view in the side navigation.
+// Side navigation: highlight the section in view; on small screens the
+// bar shows its name and opens the list.
 (function () {
   var links = {};
   document.querySelectorAll('.side a[href^="#"]').forEach(function (a) { links[a.hash.slice(1)] = a; });
   var heads = Array.prototype.filter.call(document.querySelectorAll("main [id]"), function (h) { return links[h.id]; });
+  var side = document.querySelector(".side"), menu = side.querySelector(".menu"), here = menu.querySelector(".here");
   var current = null;
+  function toggle(open) {
+    side.classList.toggle("open", open);
+    menu.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+  menu.addEventListener("click", function () { toggle(!side.classList.contains("open")); });
+  side.querySelectorAll("nav a").forEach(function (a) { a.addEventListener("click", function () { toggle(false); }); });
   function update() {
     var cur = heads[0];
     heads.forEach(function (h) { if (h.getBoundingClientRect().top < 120) cur = h; });
@@ -266,6 +296,7 @@ sp.render_png(r, "preview.png")</code></pre>
     if (cur === current) return;
     if (current) links[current.id].classList.remove("active");
     links[cur.id].classList.add("active");
+    here.textContent = cur.id === "overview" ? "" : "· " + links[cur.id].textContent;
     current = cur;
   }
   document.addEventListener("scroll", update, { passive: true });
