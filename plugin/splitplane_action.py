@@ -159,6 +159,7 @@ def run_dialog(board):
     flags = {}
     for key, text_, default in [
             ("include_smd", "Use SMD pads as stand-in vias", False),
+            ("smooth", "Smooth 45° outlines", True),
             ("plain", "Plain Voronoi (may create islands)", False),
             ("keep_old", "Keep existing zones of these nets", False),
             ("fill", "Fill zones after applying", True)]:
@@ -231,7 +232,7 @@ def run_dialog(board):
         except ValueError:
             raise ValueError("Parameters must be numbers.")
         return (layer.GetStringSelection(), nets, num,
-                flags["include_smd"].GetValue(), flags["plain"].GetValue())
+                flags["include_smd"].GetValue(), flags["plain"].GetValue(), flags["smooth"].GetValue())
 
     def set_busy(busy):
         state["busy"] = busy
@@ -246,7 +247,7 @@ def run_dialog(board):
         except ValueError as e:
             error(str(e))
             return
-        lay, nets, num, smd, plain = key
+        lay, nets, num, smd, plain, smooth = key
         # Re-read the board each time: vias may have moved since the dialog opened.
         board_text = board.get_as_string()
 
@@ -256,7 +257,7 @@ def run_dialog(board):
         def work():
             try:
                 r = sp.compute(board_text, lay, nets, num["gap"], num["edge"], num["min_neck"],
-                               num["res"], smd, plain, progress=progress)
+                               num["res"], smd, plain, progress=progress, smooth=smooth)
             except Exception as e:  # shown in the dialog
                 wx.CallAfter(done, None, e)
             else:

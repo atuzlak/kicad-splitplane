@@ -38,6 +38,25 @@ def test_header_row_does_not_split_the_copper():
         assert len(sp.simulate_fill(region, net, r.holes, 0.25)) == 1, net
 
 
+def _edges(regions):
+    for g in regions.values():
+        for p in sp._parts(g):
+            c = list(p.exterior.coords)
+            yield from zip(c[:-1], c[1:])
+
+
+def test_smooth_outlines_are_octilinear_and_still_clean():
+    text = open(os.path.join(HERE, "..", "examples", "demo_board.kicad_pcb"), encoding="utf-8").read()
+    smooth = sp.compute(text, LAYER, ["+5V", "+3V3", "+1V8"])
+    raw = sp.compute(text, LAYER, ["+5V", "+3V3", "+1V8"], smooth=False)
+    assert smooth.ok, smooth.log
+    edges = list(_edges(smooth.regions))
+    assert len(edges) < len(list(_edges(raw.regions))) / 3
+    octi = sum(min(abs(abs(b[0] - a[0]) - abs(b[1] - a[1])), abs(b[0] - a[0]), abs(b[1] - a[1])) < 1e-3
+               for a, b in edges)
+    assert octi / len(edges) > 0.9
+
+
 def test_check_reports_zone_over_foreign_pad():
     holes = [sp.Hole(0, 0, Point(0, 0).buffer(0.85), "B"), sp.Hole(7, 7, Point(7, 7).buffer(0.3), "A")]
     regions = {"A": box(-5, -5, 9, 9).difference(box(5.5, 5.5, 10, 10)).union(box(6, 6, 9, 9)),

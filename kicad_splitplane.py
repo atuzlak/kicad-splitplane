@@ -291,7 +291,7 @@ def voronoi_partition(seeds, outline, gap, edge, log):
 # nets and has to be moved; a target position is suggested.
 def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
                         max_orders=24, progress=None, holes=(), min_neck=1.0,
-                        min_copper=0.25, ring=0.5):
+                        min_copper=0.25, ring=0.5, pretty=True):
     usable = outline.buffer(-edge)
     x0, y0, x1, y1 = outline.bounds
     W, H = int(math.ceil((x1 - x0) / res)), int(math.ceil((y1 - y0) / res))
@@ -437,7 +437,7 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
     reached = nearest >= 0
     label.flat[reached] = owner.flat[nearest[reached]]
 
-    regions = {}
+    cells = {}
     for i, n in enumerate(nets):
         m = label == i
         boxes = []
@@ -445,8 +445,10 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
             run = np.flatnonzero(np.diff(np.r_[0, m[r].astype(np.int8), 0]))
             for a, b in zip(run[::2], run[1::2]):
                 boxes.append(box(x0 + a * res, y0 + r * res, x0 + b * res, y0 + (r + 1) * res))
-        poly = unary_union(boxes).simplify(res * 1.2)
-        regions[n] = poly.intersection(usable).buffer(-gap / 2, join_style=2)
+        cells[n] = unary_union(boxes)
+    keep = {n: [Point(x, y).buffer(r + clear) for x, y, r in pads[n]] for n in nets}
+    regions = tidy(cells, usable, gap, keep, holes, min_neck,
+                   [16 * res, 12 * res, 8 * res, 4 * res, 2 * res] if pretty else [])
 
     for n, (r, c) in failed:
         p = Point(cx[c], cy[r])
@@ -457,6 +459,139 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
             msg += f" -> move it to ~({q.x:.2f}, {q.y:.2f}) ({p.distance(q):.1f} mm fanout)"
         log.append(msg)
     return regions
+
+
+# =============================================================================
+# 3c. Clean outlines: smooth borders with 0 / 45 / 90 degree edges
+# =============================================================================
+# The grid gives staircase borders. Neighbouring regions share their borders
+# (a polygon coverage), so they are simplified together (shapely's
+# coverage_simplify keeps shared borders identical) and every segment is then
+# bent into a straight + 45-degree pair, like a hand-drawn plane. Each
+# simplification level is only used if it keeps every pad ring, the gap
+# between zones and the connectivity at least as good as the raw grid.
+def _octilinear_ring(coords):
+    out = [coords[0]]
+    for a, b in zip(coords[:-1], coords[1:]):
+        dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+        if dx > 1e-6 and dy > 1e-6 and abs(dx - dy) > 1e-6:
+            # Bend from the lexicographically smaller end, so both zones that
+            # share this segment get the same corner.
+            p, q = (a, b) if a < b else (b, a)
+            d = min(dx, dy)
+            out.append((p[0] + math.copysign(d, q[0] - p[0]), p[1] + math.copysign(d, q[1] - p[1])))
+        out.append(b)
+    return out
+
+
+def _polygons(geom):
+    return unary_union([g for g in getattr(geom, "geoms", [geom]) if g.geom_type in ("Polygon", "MultiPolygon")])
+
+
+def _octilinear(geom):
+    from shapely import make_valid
+    return _polygons(make_valid(unary_union([
+        Polygon(_octilinear_ring(list(p.exterior.coords)),
+                [_octilinear_ring(list(i.coords)) for i in p.interiors]) for p in _parts(geom)])))
+
+
+def _defects(regions, keep, holes, gap, min_neck):
+    """Count what makes a split worse: islands, pad rings not covered, zones over
+    another net's pad, zones closer than the gap, thin necks."""
+    n = 0
+    for net, r in regions.items():
+        parts = _parts(r)
+        n += len(parts) - 1
+        n += sum(not r.contains(k) for k in keep.get(net, []))
+        n += sum(1 for h in holes if h.net in regions and h.net != net
+                 and r.intersects(h.shape.buffer(gap / 2)))
+        if min_neck:
+            copper = unary_union(simulate_fill(r, net, holes, gap / 2)) if holes else r
+            n += len(_parts(copper.buffer(-min_neck / 2).buffer(min_neck / 2))) > len(_parts(copper))
+    nets = sorted(regions)
+    n += sum(regions[a].distance(regions[b]) < gap * 0.9
+             for i, a in enumerate(nets) for b in nets[i + 1:])
+    return n
+
+
+def _octagon(p, r):
+    """Octagon around p with 0 / 45 / 90 degree edges, enclosing the circle of radius r."""
+    R = r / math.cos(math.pi / 8)
+    return Polygon([(p.x + R * math.cos(a), p.y + R * math.sin(a))
+                    for a in (math.pi / 8 + k * math.pi / 4 for k in range(8))])
+
+
+def _bad_spots(regions, keep, holes, gap):
+    """Pads whose ring a zone border cuts, and other nets' pads a zone covers."""
+    spots = [k.centroid for net, rings in keep.items() for k in rings if not regions[net].contains(k)]
+    spots += [Point(h.x, h.y) for net, r in regions.items() for h in holes
+              if h.net in regions and h.net != net and r.intersects(h.shape.buffer(gap / 2))]
+    return spots
+
+
+def _clean_cover(cover, keep, zone=None, thin=0.4):
+    """Hand pieces of a partition that hold none of their net's pads, and (within
+    `zone`) spikes thinner than 2*thin, to the neighbour they share the longest
+    border with. Such slivers appear where smooth and exact borders meet."""
+    out, loose = {}, []
+    for n, g in cover.items():
+        rings = keep.get(n, [])
+        if zone is not None and not zone.is_empty:
+            body = g.buffer(-thin, join_style=2).buffer(thin, join_style=2)
+            spikes = g.intersection(zone).difference(body)
+            g = _polygons(g.difference(spikes))
+            loose += [(p, n) for p in _parts(_polygons(spikes)) if p.area > 1e-6]
+        good = [p for p in _parts(g) if any(p.intersects(k) for k in rings)]
+        loose += [(p, None) for p in _parts(g) if not any(p.intersects(k) for k in rings)]
+        out[n] = unary_union(good) if good else Polygon()
+    for q, was in sorted(loose, key=lambda t: t[0].area):
+        edge = q.exterior.buffer(1e-3)
+        touch = {n: edge.intersection(out[n]).area for n in out if n != was}
+        best = max(touch, key=touch.get, default=None)
+        if best is not None and touch[best] > 0:
+            out[best] = _polygons(out[best].union(q.buffer(1e-6, join_style=2)))
+        elif was is not None:
+            out[was] = _polygons(out[was].union(q.buffer(1e-6, join_style=2)))
+    # Close zero-width slits where two borders met (they would open up when
+    # the zone is shrunk by half the gap).
+    return {n: _polygons(g.buffer(0.01, join_style=2).buffer(-0.01, join_style=2)) for n, g in out.items()}
+
+
+def tidy(cells, usable, gap, keep, holes=(), min_neck=1.0, tolerances=(), patch=3.0):
+    """Zones from grid regions: smoothed and octilinear where that does no harm.
+    Around pads where the smooth border would be worse, the exact grid border
+    is kept (within `patch` mm); both are partitions, so the gap stays intact."""
+    def shrink(polys):
+        return {n: _polygons(g.intersection(usable).buffer(-gap / 2, join_style=2))
+                for n, g in polys.items()}
+
+    nets = list(cells)
+    exact = {n: cells[n].simplify(0.01) for n in nets}
+    raw = shrink(exact)
+    if not tolerances:
+        return raw
+    try:
+        from shapely import coverage_simplify
+    except ImportError:  # shapely < 2.1
+        return raw
+    limit = _defects(raw, keep, holes, gap, min_neck)
+    for tol in tolerances:
+        simple = coverage_simplify([cells[n] for n in nets], tolerance=tol, simplify_boundary=False)
+        cover = {n: _octilinear(g) for n, g in zip(nets, simple)}
+        area = Polygon()
+        for _ in range(3):
+            cover = _clean_cover(cover, keep)
+            cand = shrink(cover)
+            spots = [p for p in _bad_spots(cand, keep, holes, gap) if not area.contains(p)]
+            if not spots:
+                break
+            area = area.union(unary_union([_octagon(p, patch) for p in spots]))
+            cover = {n: _polygons(cover[n].difference(area).union(exact[n].intersection(area)))
+                     for n in nets}
+        cand = shrink(_clean_cover(cover, keep, area.buffer(1.0)))
+        if _defects(cand, keep, holes, gap, min_neck) <= limit:
+            return cand
+    return raw
 
 
 # =============================================================================
@@ -581,7 +716,7 @@ class Result:
 
 
 def compute(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
-            include_smd=False, plain=False, progress=None) -> Result:
+            include_smd=False, plain=False, progress=None, smooth=True) -> Result:
     """Partition only; result.board_text is None. Raises ValueError on unusable input."""
     log = []
     nets = list(dict.fromkeys(nets))
@@ -603,15 +738,15 @@ def compute(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
         regions = voronoi_partition(seeds, outline, gap, edge, log)
     else:
         regions = connected_partition(seeds, outline, gap, edge, log, res=res, progress=progress,
-                                      holes=holes, min_neck=min_neck)
+                                      holes=holes, min_neck=min_neck, pretty=smooth)
     ok = check(regions, seeds, min_neck, log, holes, gap)
     return Result(None, regions, seeds, outline, layer, ok, log, holes)
 
 
 def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
-            include_smd=False, plain=False, keep_old=False, progress=None) -> Result:
+            include_smd=False, plain=False, keep_old=False, progress=None, smooth=True) -> Result:
     """Full pipeline on board text: compute() + write the zones into the text."""
-    r = compute(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, progress)
+    r = compute(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, progress, smooth)
     if not keep_old:
         text, n_old = strip_old_zones(text, layer, set(nets))
         if n_old:
@@ -674,6 +809,7 @@ def main(argv=None):
     ap.add_argument("--res", type=float, default=0.5, help="grid resolution [mm]; try 0.3-0.6 if vias get trapped")
     ap.add_argument("--include-smd", action="store_true", help="use SMD pads as stand-in vias (preview before fanout)")
     ap.add_argument("--plain", action="store_true", help="skip connecting the vias (faster, may create islands)")
+    ap.add_argument("--no-smooth", action="store_true", help="keep the raw grid outlines instead of smooth 45-degree ones")
     ap.add_argument("--keep-old", action="store_true", help="keep existing zones of these nets on the layer")
     ap.add_argument("--out", help="output board (default: <board>_splitplane.kicad_pcb)")
     ap.add_argument("--version", action="version", version=__version__)
@@ -689,7 +825,7 @@ def main(argv=None):
         ap.error("--nets is required (use --list-nets to see candidates)")
     try:
         r = process(text, a.layer, a.nets, a.gap, a.edge, a.min_neck, a.res,
-                    a.include_smd, a.plain, a.keep_old,
+                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth,
                     progress=lambda i, n: print(f"  routing order {i + 1}/{n}", end="\r", file=sys.stderr))
     except ValueError as e:
         sys.exit(f"error: {e}")

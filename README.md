@@ -66,6 +66,7 @@ For development, link the folder into KiCad's plugin directory instead of instal
 | `--min-neck` | 1.0 mm | Warn where a zone gets narrower than this |
 | `--res` | 0.5 mm | Routing grid. If a via gets trapped, try 0.3–0.6 |
 | `--include-smd` | off | Treat SMD pads as vias: preview **before** you place the power vias |
+| `--no-smooth` | off | Keep the raw grid outlines instead of smooth 0°/45°/90° edges |
 | `--plain` | off | Skip connecting the vias (faster, may create islands) |
 | `--keep-old` | off | Keep existing zones of these nets on the layer (default: replaced) |
 | `--out` | `<board>_splitplane.kicad_pcb` | Output file |
@@ -76,7 +77,7 @@ Exit code is `0` when every net got one clean zone, `1` when there are warnings.
 
 1. **Seeds.** Read the board (a small S-expression parser, no KiCad needed) and collect every via and through-hole pad of the chosen nets that reaches the layer, plus the outline from Edge.Cuts. All other vias, pads and holes on the layer (signals, GND, mounting holes) are read with their real size as obstacles.
 2. **Spines.** For each net, join all its vias with a tree of 45° paths on a grid (Prim's algorithm with Dijkstra). Paths keep clear of other nets' vias and pads and of spines routed before, never squeeze through gaps too narrow for copper (e.g. between header pins), avoid passages narrower than `--min-neck` and prefer the middle of free space. All routing orders of the nets are tried; the one with the fewest trapped vias and the shortest spines wins.
-3. **Split.** Every pad and via keeps a ring of its own net around it. Every other grid cell goes to the nearest spine, measured around obstacles rather than through them, i.e. a Voronoi diagram of the spines instead of the vias. A region grown from one connected spine is connected. The regions are clipped to the outline, shrunk by half the gap and written as KiCad zones.
+3. **Split.** Every pad and via keeps a ring of its own net around it. Every other grid cell goes to the nearest spine, measured around obstacles rather than through them, i.e. a Voronoi diagram of the spines instead of the vias. A region grown from one connected spine is connected. The borders are then simplified together (so neighbours keep a shared border) and bent into 0°/45°/90° segments, keeping the exact grid border only around pads where the smooth one would cut a pad ring. The regions are clipped to the outline, shrunk by half the gap and written as KiCad zones.
 4. **Check.** The tool estimates what KiCad will actually fill (zone minus clearance around other nets' copper) and warns about zones running over another supply's pad, pads/vias cut off from their zone, copper split by rows of pads, and necks narrower than `--min-neck`.
 
 If a via is completely enclosed by other nets, no continuous split exists. The tool reports it and suggests where to move it:
