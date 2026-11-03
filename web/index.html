@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>kicad-splitplane</title>
-<meta name="description" content="Split a KiCad power layer into one continuous copper zone per voltage.">
+<meta name="description" content="Split a KiCad power layer into one continuous copper zone per voltage. KiCad plugin and command-line tool.">
 <meta property="og:title" content="kicad-splitplane: KiCad split power planes, automatically">
-<meta property="og:description" content="One continuous zone per voltage, computed from your vias. Python library and command-line tool.">
-<meta property="og:image" content="img/comparison.png">
+<meta property="og:description" content="One continuous zone per voltage, computed from your vias. KiCad 9/10 plugin, command-line tool and Python library.">
+<meta property="og:image" content="https://people.ee.ethz.ch/~atuzlak/img/comparison.png">
 <style>
 body {
   margin: 0; background: #fff; color: #222;
@@ -21,6 +21,7 @@ li { margin-bottom: 0.3em; }
 a { color: #0645ad; }
 code, pre, kbd, td:first-child { font-family: ui-monospace, Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 0.88em; }
 :not(pre) > code { background: #f3f3f3; padding: 0.1em 0.3em; border-radius: 3px; }
+kbd { background: #f3f3f3; border: 1px solid #ccc; border-bottom-width: 2px; border-radius: 3px; padding: 0 0.3em; }
 pre { background: #f6f6f6; border-radius: 4px; padding: 0.8em 1em; overflow-x: auto; line-height: 1.45; margin: 0 0 1em; }
 img { max-width: 100%; height: auto; display: block; }
 figure { margin: 1.2em 0; }
@@ -29,10 +30,13 @@ figcaption { font-size: 0.9em; color: #555; margin-top: 0.4em; }
 table { border-collapse: collapse; width: 100%; font-size: 0.93em; margin: 0 0 1em; }
 th, td { text-align: left; padding: 0.4em 0.6em; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
 td:first-child { white-space: nowrap; }
+.ui td:first-child { font-family: inherit; font-size: inherit; font-weight: 600; }
 
 .crumb { font-size: 0.9em; color: #666; }
 .crumb a { color: #666; }
 .lede { font-size: 1.1em; color: #444; }
+.toc { font-size: 0.93em; }
+.note { background: #f6f8fb; border-left: 3px solid #9bb3d6; padding: 0.6em 0.9em; margin: 0 0 1em; }
 
 .content { max-width: 50em; margin: 0 auto; padding: 1.5em 1.25em 4em; }
 
@@ -45,23 +49,80 @@ footer a { color: #666; }
 <body>
 
 <div class="content">
-<div class="crumb"><a href="../">Aleksandar Tuzlak</a> / projects / kicad-splitplane</div>
+<div class="crumb"><a href="https://people.ee.ethz.ch/~atuzlak/">Aleksandar Tuzlak</a> / <a href="https://people.ee.ethz.ch/~atuzlak/#projects">Projects</a> / kicad-splitplane</div>
 
 <main>
 <h1 id="overview">kicad-splitplane</h1>
-<p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are.</p>
-
+<p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin or from the command line.</p>
 
 <figure>
-  <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone.">
+  <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone with straight 45-degree edges.">
   <figcaption>Same board, same vias. Left: plain Voronoi split, where nets break into islands. Right: kicad-splitplane, with every voltage in one piece.</figcaption>
 </figure>
 
-<p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it first connects each net's vias with a path, then splits the layer like a Voronoi diagram of those paths, so no net breaks into islands.</p>
+<p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it connects each net's vias with a path, splits the layer around those paths, and draws the borders with straight 0°/45°/90° edges.</p>
+
+<p class="toc"><a href="#plugin">KiCad plugin</a> · <a href="#usage">Using it in KiCad</a> · <a href="#cli">Command line</a> · <a href="#how">How it works</a> · <a href="#notes">Good to know</a> · <a href="#changes">Changes</a></p>
+
+<h2 id="plugin">KiCad plugin</h2>
+<p>Needs <strong>KiCad 9 or newer</strong> on Windows, macOS or Linux. The plugin works on the board that is open in the PCB editor and writes the zones straight into it as one undo step.</p>
+
+<h3 id="enable-api">1. Enable the KiCad API (once)</h3>
+<p>In KiCad: <strong>Preferences → Preferences… → Plugins</strong>, tick <strong>Enable KiCad API</strong>, press OK and restart KiCad.</p>
+
+<h3 id="install-plugin">2. Install the plugin</h3>
+<ol>
+  <li>Download <code>kicad-splitplane-&lt;version&gt;-pcm.zip</code> from the <a href="https://github.com/atuzlak/kicad-splitplane/releases/latest">latest release on GitHub</a>. Don't unzip it.</li>
+  <li>In the KiCad project manager open <strong>Plugin and Content Manager</strong>.</li>
+  <li>Press <strong>Install from File…</strong> (bottom left), pick the zip, then press <strong>Apply Pending Changes</strong>.</li>
+</ol>
+<p class="note">The plugin has been submitted to KiCad's official repository. Once it is listed, you will find it in the Plugin and Content Manager under <em>Plugins</em> by searching for <strong>kicad-splitplane</strong>, and KiCad will offer updates there.</p>
+<p><strong>Updating:</strong> install the zip of the newer version the same way; it replaces the old one.</p>
+
+<h3 id="first-run">3. First run</h3>
+<p>Open a board in the PCB editor. A new <strong>Split power plane</strong> button appears in the top toolbar (also under <strong>Tools → External Plugins</strong>). The first time you press it, KiCad installs the plugin's Python packages (numpy, scipy, shapely, matplotlib) in the background. That takes a minute or two and shows nothing; just wait, then press the button again if no window has appeared.</p>
+
+<h2 id="usage">Using it in KiCad</h2>
+<ol>
+  <li><strong>Place the power vias first.</strong> Each supply needs at least one via or through-hole pad that reaches the plane layer. If you have not placed them yet, tick <em>Use SMD pads as stand-in vias</em> to get a first impression of the split.</li>
+  <li>Press <strong>Split power plane</strong> in the toolbar.</li>
+  <li>Choose the <strong>Layer</strong> to split (e.g. <code>In2.Cu</code>).</li>
+  <li>Tick the <strong>nets</strong> that share this layer. The list shows supply-like nets with their number of vias/THT pads and SMD pads; tick <em>show all nets</em> if yours is missing.</li>
+  <li>Press <strong>Preview</strong>. The split appears on the right, other nets' pads and vias in grey, and the log below. <em>OK: one zone per net</em> means the split is clean.</li>
+  <li>Press <strong>Apply</strong>. The zones are written into the board and filled. Existing zones of the selected nets on that layer are replaced.</li>
+  <li>Close the window, check the result and run the <strong>Design Rules Checker</strong>. <kbd>Ctrl</kbd>+<kbd>Z</kbd> removes all zones of one run at once.</li>
+</ol>
+
+<h3 id="dialog">Settings in the dialog</h3>
+<table class="ui">
+  <thead><tr><th>Setting</th><th>Default</th><th>What it does</th></tr></thead>
+  <tbody>
+    <tr><td>Gap between zones</td><td>0.5 mm</td><td>Copper gap between neighbouring zones</td></tr>
+    <tr><td>Clearance to edge</td><td>0.5 mm</td><td>Distance from the board edge</td></tr>
+    <tr><td>Warn below width</td><td>1.0 mm</td><td>Warn where a zone's copper gets narrower than this</td></tr>
+    <tr><td>Grid resolution</td><td>0.5 mm</td><td>Routing grid; try 0.3 if a via is reported as trapped</td></tr>
+    <tr><td>Use SMD pads as stand-in vias</td><td>off</td><td>Preview the split before the power vias exist</td></tr>
+    <tr><td>Smooth 45° outlines</td><td>on</td><td>Straight 0°/45°/90° borders instead of the raw grid outline</td></tr>
+    <tr><td>Plain Voronoi</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
+    <tr><td>Keep existing zones</td><td>off</td><td>Don't replace zones of these nets already on the layer</td></tr>
+    <tr><td>Fill zones after applying</td><td>on</td><td>Run KiCad's zone fill right after Apply</td></tr>
+  </tbody>
+</table>
+
+<h3 id="warnings">What the warnings mean</h3>
+<table>
+  <thead><tr><th>Message</th><th>What to do</th></tr></thead>
+  <tbody>
+    <tr><td>via … is trapped by other nets</td><td>The via is enclosed by other supplies, so no continuous zone can reach it. Move it to the suggested position, or add a short fanout track.</td></tr>
+    <tr><td>has a neck narrower than …</td><td>Somewhere the zone gets thin. Often unavoidable next to dense connectors; otherwise move vias to give it more room.</td></tr>
+    <tr><td>zone runs over a … pad/via</td><td>A zone would cover another supply's pad. Usually means two supplies' pads are very close together.</td></tr>
+    <tr><td>pad/via … is not connected to its zone</td><td>The zone does not reach this pad once KiCad clears around other copper.</td></tr>
+    <tr><td>copper cut into … pieces</td><td>A row of other pads (e.g. a pin header) cuts the zone apart.</td></tr>
+  </tbody>
+</table>
 
 <h2 id="cli">Command line</h2>
 <p>Needs Python 3.9+. Works on Linux, macOS and Windows; you don't need KiCad installed.</p>
-<h3 id="install">Installation and usage</h3>
 <pre><code>git clone https://github.com/atuzlak/kicad-splitplane
 cd kicad-splitplane
 pip install -r requirements.txt
@@ -71,7 +132,7 @@ python kicad_splitplane.py board.kicad_pcb --list-nets
 
 # split In2.Cu between three nets
 python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
-<p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones) and <code>board_splitplane.png</code> (preview). Your original file is left alone.</p>
+<p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones) and <code>board_splitplane.png</code> (preview). Your original file is left alone. Open the new board in KiCad and press <kbd>B</kbd> to fill the zones.</p>
 
 <h3 id="options">Options</h3>
 <table>
@@ -84,6 +145,7 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</c
     <tr><td>--min-neck</td><td>1.0 mm</td><td>Warn where a zone gets narrower than this</td></tr>
     <tr><td>--res</td><td>0.5 mm</td><td>Routing grid; try 0.3 to 0.6 if a via gets trapped</td></tr>
     <tr><td>--include-smd</td><td>off</td><td>Treat SMD pads as vias (preview before fanout)</td></tr>
+    <tr><td>--no-smooth</td><td>off</td><td>Keep the raw grid outlines instead of 0°/45°/90° edges</td></tr>
     <tr><td>--plain</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
     <tr><td>--keep-old</td><td>off</td><td>Keep existing zones of these nets on the layer</td></tr>
   </tbody>
@@ -96,12 +158,31 @@ r = sp.process(open("board.kicad_pcb").read(), "In2.Cu", ["5V", "3.3V", "VBUS"])
 print(r.log)
 sp.render_png(r, "preview.png")</code></pre>
 
+<h2 id="how">How it works</h2>
+<ol>
+  <li><strong>Read the board.</strong> All vias and through-hole pads of the chosen nets on the layer, the board outline, and every other via, pad and hole with its real size. Other nets' copper is an obstacle: a zone has to keep its clearance to it.</li>
+  <li><strong>Connect each net.</strong> The vias of each net are joined by a tree of 45° paths that keep away from other nets, never squeeze between pins where no copper fits, and avoid narrow passages. All orders of the nets are tried and the best one wins.</li>
+  <li><strong>Split.</strong> Every pad keeps a ring of its own net. The rest of the layer goes to the nearest path, measured around obstacles. A region grown from one connected path is itself connected, so no net breaks into islands.</li>
+  <li><strong>Clean up and check.</strong> The borders are straightened into 0°/45°/90° segments, but only where that does not cut a pad or create a neck. Finally the tool estimates what KiCad will actually fill and reports anything that would not work.</li>
+</ol>
+<figure>
+  <img src="img/obstacles.png" width="1560" height="624" alt="Two previews of a test board with five supplies and a long pin header across the middle. Left: raw grid outlines with staircase borders. Right: the same split with straight 0, 45 and 90 degree borders. In both, the VDDA zone goes around the end of the pin header instead of between its pins.">
+  <figcaption>Test board with five supplies and a pin header (grey) across the middle. VDDA, which has vias on both sides, goes around the end of the header instead of squeezing between its pins. Left: raw grid outlines, right: smoothed.</figcaption>
+</figure>
+
 <h2 id="notes">Good to know</h2>
 <ul>
   <li>If the zones look awkward, move the vias: keep each net's vias together and use short fanout tracks.</li>
   <li>Don't route signals on the neighbouring layer across the gaps between zones. The split plane is their return path.</li>
   <li>Smaller zones get higher priority, so an island inside a bigger zone still fills correctly. Check the order in KiCad's Zone Manager.</li>
-  <li>Tested with KiCad 10. Files from KiCad 7 to 9 work too. Arcs in the board outline are approximated.</li>
+  <li>The plugin needs KiCad 9 or newer. The command line works with files from KiCad 7 to 10. Arcs in the board outline are approximated.</li>
+</ul>
+
+<h2 id="changes">Changes</h2>
+<ul>
+  <li><strong>0.4.0</strong>: pads and vias are handled with their real size; every pad keeps a ring of its own net; other nets' pads, vias and holes are obstacles (no more zones squeezed between header pins); smooth 0°/45°/90° outlines; more precise warnings. Thanks for the feedback from testing it on a 5-supply course project.</li>
+  <li><strong>0.3.1</strong>: fixes the plugin window not opening in KiCad.</li>
+  <li><strong>0.3.0</strong>: first version of the KiCad plugin.</li>
 </ul>
 
 <h2 id="contact">Feedback and contact</h2>
@@ -112,9 +193,10 @@ sp.render_png(r, "preview.png")</code></pre>
 <footer>
   Aleksandar Tuzlak · ETH Zürich · MIT License ·
   <a href="https://github.com/atuzlak/kicad-splitplane">GitHub</a> ·
-  <a href="../">Home</a>
+  <a href="https://people.ee.ethz.ch/~atuzlak/">Home</a>
 </footer>
 </div>
 
+<script data-goatcounter="https://atuzlak.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>

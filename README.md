@@ -101,7 +101,7 @@ sp.render_png(r, "preview.png")
 
 ## Website
 
-`web/` contains the static documentation page. `./deploy.sh --serve` previews it locally, `./deploy.sh user@host:public_html` uploads it.
+`web/` contains the documentation page; `python web/make_figures.py` renders its figures. `./deploy.sh` builds it as one self-contained file (`dist/kicad-splitplane.html`), `./deploy.sh --serve` previews it locally, `./deploy.sh user@host:public_html` uploads it.
 
 ## Tips and limitations
 
