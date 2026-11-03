@@ -45,11 +45,13 @@ h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
 .side { display: none; }
 .side ul { list-style: none; margin: 0; padding: 0; }
 .side li { margin: 0; }
-.side a { display: block; padding: 0.2em 0.7em; color: #555; text-decoration: none; border-left: 2px solid #e5e5e5; }
-.side ul ul a { padding-left: 1.6em; font-size: 0.93em; }
-.side a:hover { color: #0645ad; }
-.side a.active { color: #0645ad; border-left-color: #0645ad; }
-.side .title { font-weight: 600; margin: 0 0 0.4em 0.7em; }
+.side a { display: block; padding: 0.22em 0; color: #777; text-decoration: none; }
+.side a:hover { color: #222; }
+.side a.active { color: #222; font-weight: 600; }
+.side ul ul { display: none; margin: 0.05em 0 0.35em 0.9em; }
+.side li.open > ul { display: block; }
+.side ul ul a { font-size: 0.93em; padding: 0.12em 0; }
+.side .title { font-size: 0.75em; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #999; margin: 0 0 0.8em; }
 @media (min-width: 64em) {
   .page { display: grid; grid-template-columns: 14em minmax(0, 50em); gap: 1.5em; max-width: 66em; margin: 0 auto; }
   .page .content { margin: 0; }
@@ -264,6 +266,9 @@ sp.render_png(r, "preview.png")</code></pre>
     if (cur === current) return;
     if (current) links[current.id].classList.remove("active");
     links[cur.id].classList.add("active");
+    // Show the sub-items of the section in view only.
+    document.querySelectorAll(".side li.open").forEach(function (li) { li.classList.remove("open"); });
+    links[cur.id].closest(".side nav > ul > li").classList.add("open");
     current = cur;
   }
   document.addEventListener("scroll", update, { passive: true });
