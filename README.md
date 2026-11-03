@@ -4,6 +4,8 @@ Split a KiCad power layer into **exactly one continuous copper zone per voltage*
 
 **[Documentation →](https://people.ee.ethz.ch/~atuzlak/kicad-splitplane)**
 
+**Available in [KiCad](https://www.kicad.org)'s official Plugin and Content Manager**: search for *kicad-splitplane* and press Install ([listing](https://gitlab.com/kicad/addons/metadata/-/tree/main/packages/ch.ethz.atuzlak.splitplane)).
+
 ![Plain Voronoi vs. kicad-splitplane on the demo board](web/img/comparison.png)
 
 On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to
@@ -45,8 +47,8 @@ kicad-splitplane board.kicad_pcb --nets 5V 3.3V VBUS
 The same tool also runs inside the PCB editor (KiCad 9 or newer). It works on the open board, shows a preview and writes the zones directly into the board as **one undo step**, so Ctrl+Z removes them again.
 
 1. In KiCad: **Preferences → Plugins → Enable KiCad API**.
-2. Open the **Plugin and Content Manager**, search for **kicad-splitplane** under *Plugins* and press **Install**, then **Apply Pending Changes**.
-   Or download `kicad-splitplane-<version>-pcm.zip` from the [releases](https://github.com/atuzlak/kicad-splitplane/releases) and use **Install from File…**.
+2. Open the **Plugin and Content Manager**, search for **kicad-splitplane** under *Plugins* and press **Install**, then **Apply Pending Changes**. It is listed in [KiCad's official plugin repository](https://gitlab.com/kicad/addons/metadata/-/tree/main/packages/ch.ethz.atuzlak.splitplane), so KiCad offers new versions as updates there.
+   Offline, or to try a version before it is listed: download `kicad-splitplane-<version>-pcm.zip` from the [releases](https://github.com/atuzlak/kicad-splitplane/releases) and use **Install from File…** (uninstall a zip-installed copy before installing from the list, so updates work).
    KiCad installs the Python dependencies on first use, which takes a minute.
 3. In the PCB editor, click the **Split power plane** toolbar button, pick the layer and nets, press **Preview**, then **Apply**.
 
