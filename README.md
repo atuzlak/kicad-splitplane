@@ -74,9 +74,10 @@ Exit code is `0` when every net got one clean zone, `1` when there are warnings.
 
 ## How it works
 
-1. **Seeds.** Read the board (a small S-expression parser, no KiCad needed) and collect every via and through-hole pad of the chosen nets that reaches the layer, plus the outline from Edge.Cuts.
-2. **Spines.** For each net, join all its vias with a tree of 45° paths on a grid (Prim's algorithm with Dijkstra). Paths keep clear of other nets' vias and of spines routed before, and prefer the middle of free space (cost ∝ 1/distance to foreign copper). All routing orders of the nets are tried; the one with the fewest trapped vias and the shortest spines wins.
-3. **Split.** Every grid cell goes to the nearest spine, i.e. a Voronoi diagram of the spines instead of the vias. A region grown from one connected spine is star-shaped around it, hence connected. The regions are clipped to the outline, shrunk by half the gap and written as KiCad zones.
+1. **Seeds.** Read the board (a small S-expression parser, no KiCad needed) and collect every via and through-hole pad of the chosen nets that reaches the layer, plus the outline from Edge.Cuts. All other vias, pads and holes on the layer (signals, GND, mounting holes) are read with their real size as obstacles.
+2. **Spines.** For each net, join all its vias with a tree of 45° paths on a grid (Prim's algorithm with Dijkstra). Paths keep clear of other nets' vias and pads and of spines routed before, never squeeze through gaps too narrow for copper (e.g. between header pins), avoid passages narrower than `--min-neck` and prefer the middle of free space. All routing orders of the nets are tried; the one with the fewest trapped vias and the shortest spines wins.
+3. **Split.** Every pad and via keeps a ring of its own net around it. Every other grid cell goes to the nearest spine, measured around obstacles rather than through them, i.e. a Voronoi diagram of the spines instead of the vias. A region grown from one connected spine is connected. The regions are clipped to the outline, shrunk by half the gap and written as KiCad zones.
+4. **Check.** The tool estimates what KiCad will actually fill (zone minus clearance around other nets' copper) and warns about zones running over another supply's pad, pads/vias cut off from their zone, copper split by rows of pads, and necks narrower than `--min-neck`.
 
 If a via is completely enclosed by other nets, no continuous split exists. The tool reports it and suggests where to move it:
 
