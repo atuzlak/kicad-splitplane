@@ -165,6 +165,7 @@ footer a { color: #666; }
     <tr><td>has a neck narrower than …</td><td>Somewhere the zone gets thin. Often unavoidable next to dense connectors; otherwise move vias to give it more room.</td></tr>
     <tr><td>zone runs over a … pad/via</td><td>A zone would cover another supply's pad. Usually means two supplies' pads are very close together.</td></tr>
     <tr><td>pad/via … is not connected to its zone</td><td>The zone does not reach this pad once KiCad clears around other copper.</td></tr>
+    <tr><td>another KiCad window is using the KiCad API</td><td>Only one KiCad instance can serve plugins. Close the other KiCad windows (e.g. a board opened by double-click while KiCad was already open), open the board again and retry.</td></tr>
     <tr><td>copper cut into … pieces</td><td>A row of other pads (e.g. a pin header) cuts the zone apart.</td></tr>
   </tbody>
 </table>

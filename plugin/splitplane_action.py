@@ -323,6 +323,12 @@ def main():
         # Large boards take a while to serialise; the default 2 s timeout is too short.
         board = KiCad(timeout_ms=60000).get_board()
     except Exception as e:
+        if "token" in str(e):
+            # Only the first KiCad instance gets the API socket; a second one
+            # (e.g. a board opened by double-click while KiCad is already
+            # running) hands its plugins a token the first one rejects.
+            sys.exit("kicad-splitplane: another KiCad window is using the KiCad API.\n"
+                     "Close all other KiCad windows, open the board again and retry.")
         sys.exit(f"kicad-splitplane: no open board found via the KiCad API ({e}).\n"
                  "Open a board in the PCB editor and enable Preferences > Plugins > Enable KiCad API.")
     run_dialog(board)
