@@ -40,6 +40,24 @@ td:first-child { white-space: nowrap; }
 
 .content { max-width: 50em; margin: 0 auto; padding: 1.5em 1.25em 4em; }
 
+html { scroll-behavior: smooth; }
+h1[id], h2[id], h3[id] { scroll-margin-top: 1em; }
+.side { display: none; }
+.side ul { list-style: none; margin: 0; padding: 0; }
+.side li { margin: 0; }
+.side a { display: block; padding: 0.2em 0.7em; color: #555; text-decoration: none; border-left: 2px solid #e5e5e5; }
+.side ul ul a { padding-left: 1.6em; font-size: 0.93em; }
+.side a:hover { color: #0645ad; }
+.side a.active { color: #0645ad; border-left-color: #0645ad; }
+.side .title { font-weight: 600; margin: 0 0 0.4em 0.7em; }
+@media (min-width: 64em) {
+  .page { display: grid; grid-template-columns: 14em minmax(0, 50em); gap: 1.5em; max-width: 66em; margin: 0 auto; }
+  .page .content { margin: 0; }
+  .side { display: block; }
+  .side nav { position: sticky; top: 0; padding: 5.5em 0 1em 1.25em; font-size: 0.9em; max-height: 100vh; overflow-y: auto; box-sizing: border-box; }
+  .toc { display: none; }
+}
+
 .small { font-size: 0.88em; color: #666; }
 
 footer { margin-top: 3em; padding-top: 1em; border-top: 1px solid #e5e5e5; font-size: 0.88em; color: #666; }
@@ -47,6 +65,36 @@ footer a { color: #666; }
 </style>
 </head>
 <body>
+
+<div class="page">
+<aside class="side">
+<nav aria-label="Contents">
+  <div class="title">Contents</div>
+  <ul>
+    <li><a href="#overview">Overview</a></li>
+    <li><a href="#plugin">KiCad plugin</a>
+      <ul>
+        <li><a href="#enable-api">Enable the API</a></li>
+        <li><a href="#install-plugin">Install</a></li>
+        <li><a href="#first-run">First run</a></li>
+      </ul></li>
+    <li><a href="#usage">Using it in KiCad</a>
+      <ul>
+        <li><a href="#dialog">Settings</a></li>
+        <li><a href="#warnings">Warnings</a></li>
+      </ul></li>
+    <li><a href="#cli">Command line</a>
+      <ul>
+        <li><a href="#options">Options</a></li>
+        <li><a href="#python">From Python</a></li>
+      </ul></li>
+    <li><a href="#how">How it works</a></li>
+    <li><a href="#notes">Good to know</a></li>
+    <li><a href="#changes">Changes</a></li>
+    <li><a href="#contact">Contact</a></li>
+  </ul>
+</nav>
+</aside>
 
 <div class="content">
 <div class="crumb"><a href="https://people.ee.ethz.ch/~atuzlak/">Aleksandar Tuzlak</a> / <a href="https://people.ee.ethz.ch/~atuzlak/#projects">Projects</a> / kicad-splitplane</div>
@@ -196,7 +244,28 @@ sp.render_png(r, "preview.png")</code></pre>
   <a href="https://people.ee.ethz.ch/~atuzlak/">Home</a>
 </footer>
 </div>
+</div>
 
+<script>
+// Highlight the section in view in the side navigation.
+(function () {
+  var links = {};
+  document.querySelectorAll('.side a[href^="#"]').forEach(function (a) { links[a.hash.slice(1)] = a; });
+  var heads = Array.prototype.filter.call(document.querySelectorAll("main [id]"), function (h) { return links[h.id]; });
+  var current = null;
+  function update() {
+    var cur = heads[0];
+    heads.forEach(function (h) { if (h.getBoundingClientRect().top < 120) cur = h; });
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2) cur = heads[heads.length - 1];
+    if (cur === current) return;
+    if (current) links[current.id].classList.remove("active");
+    links[cur.id].classList.add("active");
+    current = cur;
+  }
+  document.addEventListener("scroll", update, { passive: true });
+  update();
+})();
+</script>
 <script data-goatcounter="https://atuzlak.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
 </body>
 </html>
