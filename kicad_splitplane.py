@@ -462,12 +462,14 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
 # =============================================================================
 # 4. Checks and output
 # =============================================================================
-def simulate_fill(region, net, holes, clear, thermal_gap=0.5):
+def simulate_fill(region, net, holes, clear, thermal_gap=0.5, seeds=()):
     """Roughly what KiCad fills: the zone minus clearance around every other
-    net's via / pad / hole, without islands that touch none of the net's pads."""
+    net's via / pad / hole, without islands that touch none of the net's pads.
+    Seeds without a hole (SMD stand-ins for vias still to be placed) count as pads."""
     foreign = unary_union([h.shape.buffer(clear) for h in holes if h.net != net])
     fill = region.difference(foreign) if not foreign.is_empty else region
     pads = [h.shape.buffer(thermal_gap + 0.1) for h in holes if h.net == net]
+    pads += [Point(x, y).buffer(0.3 + thermal_gap + 0.1) for x, y, n in seeds if n == net]
     return [p for p in _parts(fill) if any(p.intersects(q) for q in pads)] if pads else _parts(fill)
 
 
@@ -484,7 +486,7 @@ def check(regions, seeds, min_neck, log, holes=(), gap=0.5, thermal_gap=0.5):
                 if h.net in regions and h.net != net and r.intersects(h.shape.buffer(gap / 2)):
                     ok = False
                     log.append(f"! {net}: zone runs over a {h.net} pad/via at ({h.x:.2f}, {h.y:.2f})")
-            filled = simulate_fill(r, net, holes, gap / 2, thermal_gap)
+            filled = simulate_fill(r, net, holes, gap / 2, thermal_gap, seeds)
             copper = unary_union(filled)
             if len(filled) > len(parts):
                 ok = False
