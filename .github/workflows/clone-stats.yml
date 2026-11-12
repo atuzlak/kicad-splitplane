@@ -1,0 +1,37 @@
+# Daily: add the last 14 days of GitHub clone traffic to clones.json on the
+# 'stats' branch, which the web page reads (GitHub itself forgets after 14 days).
+#
+# Needs a repository secret TRAFFIC_TOKEN: a fine-grained personal access
+# token for this repository only, with "Administration: Read-only" (the
+# traffic API is not available to the workflow's own token).
+name: clone-stats
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: stats
+          path: stats
+      - name: Merge the last 14 days
+        env:
+          GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+        run: gh api "repos/$GITHUB_REPOSITORY/traffic/clones" | python3 .github/clone_stats.py stats/clones.json
+      - name: Commit
+        working-directory: stats
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add clones.json
+          git commit -m "Clone statistics $(date -u +%F)"
+          git push

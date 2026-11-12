@@ -117,6 +117,7 @@ footer a { color: #666; }
     <li><a href="#how">How it works</a></li>
     <li><a href="#notes">Good to know</a></li>
     <li><a href="#changes">Changes</a></li>
+    <li><a href="#thanks">Thanks</a></li>
     <li><a href="#contact">Contact</a></li>
   </ul>
 </nav>
@@ -128,7 +129,7 @@ footer a { color: #666; }
 <main>
 <h1 id="overview">kicad-splitplane</h1>
 <p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin or from the command line.</p>
-<p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.</p>
+<p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden> <span id="downloads" hidden>Downloaded <strong></strong> times</span><span id="stats-and" hidden> and </span><span id="clones" hidden><span class="verb">cloned</span> <strong></strong> times on GitHub</span> so far.</span></p>
 
 <figure>
   <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone with straight 45-degree edges.">
@@ -264,6 +265,9 @@ sp.render_png(r, "preview.png")</code></pre>
   <li><strong>0.3.0</strong>: first version of the KiCad plugin.</li>
 </ul>
 
+<h2 id="thanks">Thanks</h2>
+<p>Thanks to <strong>Alfonso Blanco Fontao</strong> for teaching the Applied PCB Design course at ETH Zürich, which got this project started, and for reviewing the first version and testing it on the course project. His feedback shaped version 0.4.0.</p>
+
 <h2 id="contact">Feedback and contact</h2>
 <p>Found a bug, have an idea for an improvement, or interested in working together on this? I'd be glad to hear from you. Write me an email at <a href="mailto:atuzlak@ethz.ch">atuzlak@ethz.ch</a>.</p>
 <p>Bug reports and pull requests are also welcome on <a href="https://github.com/atuzlak/kicad-splitplane">GitHub</a>.</p>
@@ -304,6 +308,40 @@ sp.render_png(r, "preview.png")</code></pre>
   }
   document.addEventListener("scroll", update, { passive: true });
   update();
+})();
+
+// Counters. Downloads: installs from KiCad's Plugin and Content Manager and
+// manual downloads both fetch the release zip from GitHub (API limit: 60
+// requests/hour per visitor). Clones: GitHub keeps clone numbers for 14 days
+// only, so a daily workflow records them in clones.json on the 'stats'
+// branch. Each part stays hidden if its source is unreachable.
+(function () {
+  var shown = {};
+  function show(id, n) {
+    if (!n) return;
+    var el = document.getElementById(id);
+    el.querySelector("strong").textContent = n.toLocaleString("en-US");
+    el.hidden = false;
+    shown[id] = true;
+    document.getElementById("stats-and").hidden = !(shown.downloads && shown.clones);
+    document.querySelector("#clones .verb").textContent = shown.downloads ? "cloned" : "Cloned";
+    document.getElementById("stats").hidden = false;
+  }
+  function json(url) {
+    return fetch(url).then(function (r) { if (!r.ok) throw r.status; return r.json(); });
+  }
+  json("https://api.github.com/repos/atuzlak/kicad-splitplane/releases?per_page=100")
+    .then(function (releases) {
+      var n = 0;
+      releases.forEach(function (rel) {
+        rel.assets.forEach(function (a) { if (/-pcm\.zip$/.test(a.name)) n += a.download_count; });
+      });
+      show("downloads", n);
+    })
+    .catch(function () {});
+  json("https://raw.githubusercontent.com/atuzlak/kicad-splitplane/stats/clones.json")
+    .then(function (d) { show("clones", d.count); })
+    .catch(function () {});
 })();
 </script>
 <script data-goatcounter="https://atuzlak.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
