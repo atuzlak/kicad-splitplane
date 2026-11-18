@@ -1,0 +1,32 @@
+# Thin PyPI package for `uvx kicad-splitplane-mcp`: no code of its own, it
+# installs kicad-splitplane with the [mcp] extra and provides the command.
+# Its version always equals kicad-splitplane's (checked by the release workflow).
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kicad-splitplane-mcp"
+version = "0.5.0"
+description = "MCP server for kicad-splitplane: lets AI agents split KiCad power planes"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Aleksandar Tuzlak" }]
+requires-python = ">=3.10"
+dependencies = ["kicad-splitplane[mcp]==0.5.0"]
+keywords = ["kicad", "pcb", "power-plane", "mcp", "mcp-server", "ai-agents"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Electronic Design Automation (EDA)",
+]
+
+[project.urls]
+Homepage = "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane"
+Source = "https://github.com/atuzlak/kicad-splitplane"
+
+[project.scripts]
+kicad-splitplane-mcp = "kicad_splitplane_mcp:main"
+
+[tool.setuptools]
+py-modules = []
+packages = []

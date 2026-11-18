@@ -17,6 +17,7 @@ CLI
 ---
   pip install "shapely>=2.0" numpy scipy matplotlib
   python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS
+  python kicad_splitplane.py board.kicad_pcb --nets 5V 3.3V --json   # for scripts / agents
 
 Library
 -------
@@ -25,6 +26,12 @@ Library
   result.board_text   # modified board
   result.log          # list of messages / warnings
   sp.render_png(result, "preview.png")
+  sp.summary(result)  # dict: ok, zones per net, warnings
+
+AI agents
+---------
+  kicad_splitplane_mcp.py is an MCP server around this library
+  (pip install "kicad-splitplane[mcp]"; kicad-splitplane-mcp).
 
 Author: Aleksandar Tuzlak - MIT License
 """
@@ -48,7 +55,7 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, MultiPoint, Point, Polygon, box
 from shapely.ops import nearest_points, polygonize, unary_union, voronoi_diagram
 
-__version__ = "0.4.1"
+__version__ = "0.5.0"
 
 
 # =============================================================================
@@ -755,6 +762,23 @@ def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
     return r
 
 
+def summary(result: Result) -> dict:
+    """Machine-readable result (for scripts and AI agents):
+    ok, layer, nets, zones {net: {parts, area_mm2, seeds}}, warnings, log.
+    warnings are the log lines that start with "!" (without the "! ")."""
+    return {
+        "ok": bool(result.ok),
+        "layer": result.layer,
+        "nets": sorted(result.regions),
+        "zones": {n: {"parts": len(_parts(r)),
+                      "area_mm2": round(r.area, 2),
+                      "seeds": sum(s[2] == n for s in result.seeds)}
+                  for n, r in sorted(result.regions.items())},
+        "warnings": [line[1:].strip() for line in result.log if line.startswith("!")],
+        "log": list(result.log),
+    }
+
+
 PALETTE = ["#2a6fdb", "#e8833a", "#3aa856", "#d64545", "#8a5cc7", "#c2a12b", "#2ab3b3", "#c25599"]
 
 
@@ -805,6 +829,17 @@ def write_project(board_path, out_path, nets, colors=True) -> list[str]:
     return written
 
 
+def write_outputs(board_path, out_path, result: Result, colors=True) -> dict:
+    """Write the board, the preview PNG and the project files next to
+    `out_path`, as the CLI does. Returns {"board", "preview", "project": [...]}."""
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(result.board_text)
+    png = re.sub(r"\.kicad_pcb$", "", out_path) + ".png"
+    render_png(result, png)
+    return {"board": out_path, "preview": png,
+            "project": write_project(board_path, out_path, result.regions, colors=colors)}
+
+
 def draw(result: Result, ax, title=None):
     """Plot zones and seeds onto a matplotlib Axes."""
     ax.plot(*result.outline.exterior.xy, color="#222", lw=1.5)
@@ -830,10 +865,27 @@ def draw(result: Result, ax, title=None):
 # =============================================================================
 # 5. CLI
 # =============================================================================
+class _Parser(argparse.ArgumentParser):
+    """With --json, usage errors are reported as JSON on stdout too (same exit code 2)."""
+    json_errors = False
+
+    def error(self, message):
+        if self.json_errors:
+            _print_json({"ok": False, "error": message})
+            sys.exit(2)
+        super().error(message)
+
+
+def _print_json(obj):
+    import json
+    print(json.dumps(obj, indent=2, ensure_ascii=False))
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(
+    ap = _Parser(
         prog="kicad_splitplane",
         description="Split a KiCad power layer into one continuous zone per net.")
+    ap.json_errors = "--json" in (sys.argv[1:] if argv is None else argv)
     ap.add_argument("board", help=".kicad_pcb file")
     ap.add_argument("--layer", default="In2.Cu", help="target copper layer (default In2.Cu)")
     ap.add_argument("--nets", nargs="+", help="power nets to place on the layer")
@@ -848,8 +900,12 @@ def main(argv=None):
     ap.add_argument("--keep-old", action="store_true", help="keep existing zones of these nets on the layer")
     ap.add_argument("--no-colors", action="store_true", help="don't give the nets their preview colours in the project file")
     ap.add_argument("--out", help="output board (default: <board>_splitplane.kicad_pcb)")
+    ap.add_argument("--json", action="store_true",
+                    help="print one JSON object instead of text (same files and exit codes)")
     ap.add_argument("--version", action="version", version=__version__)
     a = ap.parse_args(argv)
+    if a.json:
+        return _main_json(ap, a)
 
     text = open(a.board, encoding="utf-8").read()
     if a.list_nets:
@@ -869,13 +925,35 @@ def main(argv=None):
     for line in r.log:
         print(("  " if line.startswith("!") else "") + line)
     out = a.out or re.sub(r"\.kicad_pcb$", "", a.board) + "_splitplane.kicad_pcb"
-    with open(out, "w", encoding="utf-8") as f:
-        f.write(r.board_text)
-    png = re.sub(r"\.kicad_pcb$", "", out) + ".png"
-    render_png(r, png)
-    print(f"wrote {out}\nwrote {png}")
-    for path in write_project(a.board, out, r.regions, colors=not a.no_colors):
+    files = write_outputs(a.board, out, r, colors=not a.no_colors)
+    print(f"wrote {files['board']}\nwrote {files['preview']}")
+    for path in files["project"]:
         print(f"wrote {path}" + ("" if a.no_colors else " (net colours as in the preview)"))
+    return 0 if r.ok else 1
+
+
+def _main_json(ap, a):
+    """main() with --json: the same work, files and exit codes; stdout is one
+    JSON object. Errors give {"ok": false, "error": ...}."""
+    try:
+        text = open(a.board, encoding="utf-8").read()
+    except OSError as e:
+        _print_json({"ok": False, "error": str(e)})
+        return 1
+    if a.list_nets:
+        _print_json({"ok": True, "nets": [{"name": n, "vias_tht": t, "smd": s}
+                                          for n, t, s in list_power_candidates(text)]})
+        return 0
+    if not a.nets:
+        ap.error("--nets is required (use --list-nets to see candidates)")
+    try:
+        r = process(text, a.layer, a.nets, a.gap, a.edge, a.min_neck, a.res,
+                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth)
+    except ValueError as e:
+        _print_json({"ok": False, "error": str(e)})
+        return 1
+    out = a.out or re.sub(r"\.kicad_pcb$", "", a.board) + "_splitplane.kicad_pcb"
+    _print_json({**summary(r), "files": write_outputs(a.board, out, r, colors=not a.no_colors)})
     return 0 if r.ok else 1
 
 

@@ -35,12 +35,14 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS
 
 This writes `board_splitplane.kicad_pcb` (your board plus the zones; the original is untouched), `board_splitplane.png` (preview) and a copy of the project files (`board_splitplane.kicad_pro`/`.kicad_prl`) that keeps your design rules and shows every zone in its preview colour. Open the new board in KiCad, press **B** to fill the zones and run DRC.
 
-Or install it as a command:
+Or install it as a command from PyPI:
 
 ```bash
-pip install git+https://github.com/atuzlak/kicad-splitplane
+pip install kicad-splitplane
 kicad-splitplane board.kicad_pcb --nets 5V 3.3V VBUS
 ```
+
+(The latest development version: `pip install git+https://github.com/atuzlak/kicad-splitplane`.)
 
 ## KiCad plugin
 
@@ -73,8 +75,34 @@ For development, link the folder into KiCad's plugin directory instead of instal
 | `--keep-old` | off | Keep existing zones of these nets on the layer (default: replaced) |
 | `--no-colors` | off | Don't colour the nets in the copied project file |
 | `--out` | `<board>_splitplane.kicad_pcb` | Output file |
+| `--json` | off | Print one JSON object instead of text: `ok`, zones per net (`parts`, `area_mm2`, `seeds`), `warnings`, `log` and the written `files`. Same files and exit codes; errors give `{"ok": false, "error": ...}`. With `--list-nets`: the nets as JSON |
 
 Exit code is `0` when every net got one clean zone, `1` when there are warnings.
+
+## Use with AI agents (MCP)
+
+kicad-splitplane includes an [MCP](https://modelcontextprotocol.io) server, so AI agents (Claude Code, Claude Desktop, Cursor, VS Code, …) can split power planes for you: "split In2.Cu between +5V, +3V3 and +1V8 on board.kicad_pcb".
+
+Add it to your client as a stdio server (needs [uv](https://docs.astral.sh/uv/)):
+
+```json
+{
+  "mcpServers": {
+    "kicad-splitplane": { "command": "uvx", "args": ["kicad-splitplane-mcp"] }
+  }
+}
+```
+
+Claude Code: `claude mcp add kicad-splitplane -- uvx kicad-splitplane-mcp`. Without uv: `pip install "kicad-splitplane[mcp]"` and use the command `kicad-splitplane-mcp`.
+
+It has two tools:
+
+- `list_power_nets(board_path, all_nets=False)`: the supply-like nets with their via/THT and SMD pad counts, and the copper layers.
+- `split_plane(board_path, nets, layer="In2.Cu", gap, edge, min_neck, res, include_smd, plain, keep_old, out_path)`: the same as the command line; returns the result as with `--json`. It always writes a new board (`<board>_splitplane.kicad_pcb` by default) and never overwrites the input.
+
+The agent cannot fill zones or run DRC; open the new board in KiCad, press **B** and run DRC afterwards. Agents that read skills can use [skills/kicad-splitplane/SKILL.md](skills/kicad-splitplane/SKILL.md), which describes the whole workflow and what to do about each warning; [llms.txt](llms.txt) is a short overview for language models. Scripts can use `--json` or `sp.summary(result)` instead.
+
+Each release is published to the [MCP Registry](https://registry.modelcontextprotocol.io) as `io.github.atuzlak/kicad-splitplane` and to PyPI as `kicad-splitplane` and `kicad-splitplane-mcp`.
 
 ## How it works
 
@@ -100,6 +128,7 @@ r = sp.process(text, "In2.Cu", ["5V", "3.3V", "VBUS"], gap=0.5)
 print("\n".join(r.log))
 open("board_split.kicad_pcb", "w").write(r.board_text)
 sp.render_png(r, "preview.png")
+sp.summary(r)        # {"ok": ..., "zones": {...}, "warnings": [...], "log": [...]}
 ```
 
 ## Website
@@ -116,7 +145,7 @@ sp.render_png(r, "preview.png")
 ## Tests
 
 ```bash
-python -m pytest tests/        # plugin tests run when kicad-python is installed
+python -m pytest tests/        # plugin tests run when kicad-python is installed, MCP tests when mcp is
 ```
 
 ## Feedback and contact
@@ -126,3 +155,5 @@ Found a bug, have an idea for an improvement, or interested in collaborating? Wr
 ## License
 
 MIT, © 2026 Aleksandar Tuzlak
+
+<!-- mcp-name: io.github.atuzlak/kicad-splitplane -->
