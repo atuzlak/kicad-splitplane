@@ -114,6 +114,7 @@ footer a { color: #666; }
         <li><a href="#options">Options</a></li>
         <li><a href="#python">From Python</a></li>
       </ul></li>
+    <li><a href="#agents">AI agents (MCP)</a></li>
     <li><a href="#how">How it works</a></li>
     <li><a href="#notes">Good to know</a></li>
     <li><a href="#changes">Changes</a></li>
@@ -128,7 +129,7 @@ footer a { color: #666; }
 
 <main>
 <h1 id="overview">kicad-splitplane</h1>
-<p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin or from the command line.</p>
+<p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin, from the command line, or through AI agents (MCP).</p>
 <p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden> <span id="downloads" hidden>Downloaded <strong></strong> times</span><span id="stats-and" hidden> and </span><span id="clones" hidden><span class="verb">cloned</span> <strong></strong> times on GitHub</span> so far.</span></p>
 
 <figure>
@@ -200,15 +201,14 @@ footer a { color: #666; }
 
 <h2 id="cli">Command line</h2>
 <p>Needs Python 3.9+. Works on Linux, macOS and Windows; you don't need KiCad installed.</p>
-<pre><code>git clone https://github.com/atuzlak/kicad-splitplane
-cd kicad-splitplane
-pip install -r requirements.txt
+<pre><code>pip install kicad-splitplane
 
 # which supply nets does the board have?
-python kicad_splitplane.py board.kicad_pcb --list-nets
+kicad-splitplane board.kicad_pcb --list-nets
 
 # split In2.Cu between three nets
-python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
+kicad-splitplane board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
+<p>Or from the source: <code>git clone https://github.com/atuzlak/kicad-splitplane</code>, <code>pip install -r requirements.txt</code>, then <code>python kicad_splitplane.py …</code> with the same options.</p>
 <p>This writes <code>board_splitplane.kicad_pcb</code> (your board plus the zones), <code>board_splitplane.png</code> (preview) and a copy of the project files that keeps your design rules and shows every zone in its preview colour. Your original files are left alone. Open the new board in KiCad and press <kbd>B</kbd> to fill the zones.</p>
 
 <h3 id="options">Options</h3>
@@ -226,6 +226,7 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</c
     <tr><td>--plain</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
     <tr><td>--keep-old</td><td>off</td><td>Keep existing zones of these nets on the layer</td></tr>
     <tr><td>--no-colors</td><td>off</td><td>Don't colour the nets in the copied project file</td></tr>
+    <tr><td>--json</td><td>off</td><td>Print the result as one JSON object (for scripts and agents): ok, zones per net, warnings, the written files. Same files and exit codes</td></tr>
   </tbody>
 </table>
 
@@ -234,7 +235,19 @@ python kicad_splitplane.py board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</c
 
 r = sp.process(open("board.kicad_pcb").read(), "In2.Cu", ["5V", "3.3V", "VBUS"])
 print(r.log)
-sp.render_png(r, "preview.png")</code></pre>
+sp.render_png(r, "preview.png")
+sp.summary(r)   # dict: ok, zones per net, warnings</code></pre>
+
+<h2 id="agents">Use with AI agents (MCP)</h2>
+<p>kicad-splitplane includes an <a href="https://modelcontextprotocol.io">MCP</a> server, so AI assistants such as Claude, Cursor or VS Code can split power planes for you. Ask for example: <em>“Split In2.Cu of board.kicad_pcb between +5V, +3V3 and +1V8.”</em> The agent finds the supply nets, runs the split, explains the warnings, and you check the result in KiCad.</p>
+<p>Add it to your assistant as a local (stdio) server. It needs <a href="https://docs.astral.sh/uv/">uv</a>:</p>
+<pre><code>{
+  "mcpServers": {
+    "kicad-splitplane": { "command": "uvx", "args": ["kicad-splitplane-mcp"] }
+  }
+}</code></pre>
+<p>In Claude Code: <code>claude mcp add kicad-splitplane -- uvx kicad-splitplane-mcp</code>. Without uv: <code>pip install "kicad-splitplane[mcp]"</code> and use the command <code>kicad-splitplane-mcp</code>. It is listed in the <a href="https://registry.modelcontextprotocol.io">MCP Registry</a> as <code>io.github.atuzlak/kicad-splitplane</code>.</p>
+<p>The server has two tools: <code>list_power_nets</code> (the supply nets and copper layers of a board) and <code>split_plane</code> (the same as the command line). It always writes a new board next to yours and never changes the original. The agent can't fill zones or run DRC: open the new board in KiCad, press <kbd>B</kbd> and run the Design Rules Checker.</p>
 
 <h2 id="how">How it works</h2>
 <ol>
@@ -258,6 +271,7 @@ sp.render_png(r, "preview.png")</code></pre>
 
 <h2 id="changes">Changes</h2>
 <ul>
+  <li><strong>0.5.0</strong>: works with AI agents: an MCP server (<code>uvx kicad-splitplane-mcp</code>), JSON output with <code>--json</code>, and <code>pip install kicad-splitplane</code> from PyPI. The split itself is unchanged.</li>
   <li><strong>November 2026</strong>: listed in KiCad's official Plugin and Content Manager.</li>
   <li><strong>0.4.1</strong>: the command line also writes a copy of the project files, so the new board keeps your design rules and shows every zone in its own colour; the plugin explains how to colour the zones and gives a clear message when two KiCad windows compete for the API.</li>
   <li><strong>0.4.0</strong>: pads and vias are handled with their real size; every pad keeps a ring of its own net; other nets' pads, vias and holes are obstacles (no more zones squeezed between header pins); smooth 0°/45°/90° outlines; more precise warnings. Thanks for the feedback from testing it on a 5-supply course project.</li>
