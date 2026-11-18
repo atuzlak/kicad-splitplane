@@ -1,5 +1,8 @@
-# Push a tag v<version> (matching __version__ in kicad_splitplane.py) to build
-# the KiCad PCM package and publish it as a GitHub release asset.
+# Push a tag v<version> (matching __version__ in kicad_splitplane.py) to
+#   1. release:      build the KiCad PCM package and publish it as a GitHub release asset,
+#   2. pypi:         publish kicad-splitplane and kicad-splitplane-mcp to PyPI,
+#   3. mcp-registry: publish server.json to the MCP Registry.
+# One-time setup (PyPI trusted publishers, the "pypi" environment): AGENTS-SETUP.md.
 name: release
 
 on:
@@ -21,6 +24,28 @@ jobs:
         run: |
           v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' kicad_splitplane.py)
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME != v$v"; exit 1; }
+      - name: Check all versions match the tag
+        run: |
+          python - <<'EOF'
+          import json, os, re, sys, tomllib
+          want = os.environ["GITHUB_REF_NAME"].removeprefix("v")
+          core = tomllib.load(open("pyproject.toml", "rb"))["project"]
+          wrap = tomllib.load(open("packaging/kicad-splitplane-mcp/pyproject.toml", "rb"))["project"]
+          server = json.load(open("server.json"))
+          pin = [d.split("==", 1)[1] for d in wrap["dependencies"] if d.startswith("kicad-splitplane[mcp]==")]
+          found = {
+              "kicad_splitplane.py __version__": re.search(r'^__version__ = "(.+)"', open("kicad_splitplane.py").read(), re.M).group(1),
+              "pyproject.toml version": core["version"],
+              "packaging/kicad-splitplane-mcp version": wrap["version"],
+              "packaging/kicad-splitplane-mcp pin on kicad-splitplane[mcp]": pin[0] if pin else "missing",
+              "server.json version": server["version"],
+              "server.json packages[0].version": server["packages"][0]["version"],
+          }
+          for k, v in found.items():
+              print(f"{'ok ' if v == want else 'BAD'} {k}: {v}")
+          if any(v != want for v in found.values()):
+              sys.exit(f"Not all versions match the tag v{want}.")
+          EOF
       - run: pip install -r requirements.txt pytest
       - run: python -m pytest tests/
       - run: python plugin/build.py
@@ -30,3 +55,61 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" build/kicad-splitplane-*-pcm.zip \
             build/pcm/*/metadata.json --title "$GITHUB_REF_NAME" --generate-notes
+
+  pypi:
+    needs: release
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/kicad-splitplane-mcp
+    permissions:
+      id-token: write   # PyPI trusted publishing, no API token
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build kicad-splitplane and kicad-splitplane-mcp
+        run: |
+          pip install build
+          python -m build --outdir dist .
+          python -m build --outdir dist packaging/kicad-splitplane-mcp
+          ls -l dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  mcp-registry:
+    needs: pypi
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write   # login github-oidc for the io.github.atuzlak namespace
+      contents: read
+    env:
+      PUBLISHER_VERSION: v1.8.9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v4
+      - name: Download and verify mcp-publisher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          f=mcp-publisher_linux_amd64.tar.gz
+          gh release download "$PUBLISHER_VERSION" -R modelcontextprotocol/registry -p "$f" -p "$f.sigstore.json"
+          cosign verify-blob "$f" --bundle "$f.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/$PUBLISHER_VERSION" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com
+          tar xzf "$f" mcp-publisher
+      - name: Wait until PyPI serves kicad-splitplane-mcp
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          for i in $(seq 60); do
+            if curl -sfo /dev/null "https://pypi.org/pypi/kicad-splitplane-mcp/$v/json"; then
+              echo "PyPI serves kicad-splitplane-mcp $v"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::PyPI did not serve kicad-splitplane-mcp $v within 10 minutes"; exit 1
+      - name: Publish to the MCP Registry
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
