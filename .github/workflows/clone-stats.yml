@@ -3,7 +3,8 @@
 #
 # Needs a repository secret TRAFFIC_TOKEN: a fine-grained personal access
 # token for this repository only, with "Administration: Read-only" (the
-# traffic API is not available to the workflow's own token).
+# traffic API is not available to the workflow's own token). The run stops
+# with an error naming the secret if it is missing.
 name: clone-stats
 
 on:
@@ -24,12 +25,28 @@ jobs:
           ref: stats
           path: stats
       - name: Merge the last 14 days
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
-        run: gh api "repos/$GITHUB_REPOSITORY/traffic/clones" | python3 .github/clone_stats.py stats/clones.json
-      - name: Commit
+        run: |
+          set -euo pipefail
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::The TRAFFIC_TOKEN secret is missing or empty. Create a fine-grained token for this repository with 'Administration: Read-only' and save it as the repository secret TRAFFIC_TOKEN."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/traffic/clones" > clones-14d.json
+          python3 .github/clone_stats.py stats/clones.json < clones-14d.json
+      - name: Commit if the counts changed
+        shell: bash
         working-directory: stats
         run: |
+          set -euo pipefail
+          # The "updated" time changes on every run; only commit when the
+          # clone numbers themselves changed.
+          if git diff --quiet -I '"updated":' -- clones.json; then
+            echo "No new clones; nothing to commit."
+            exit 0
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add clones.json
