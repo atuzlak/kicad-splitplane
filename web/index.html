@@ -52,8 +52,6 @@ img { max-width: 100%; height: auto; display: block; }
 figure { margin: 1.2em 0; }
 figure img { border: 1px solid #e5e5e5; }
 figcaption { font-size: 0.9em; color: #555; margin-top: 0.4em; }
-figure.demo img { width: 600px; margin: 0 auto; }
-figure.demo figcaption { text-align: center; }
 table { border-collapse: collapse; width: 100%; font-size: 0.93em; margin: 0 0 1em; }
 th, td { text-align: left; padding: 0.4em 0.6em; border-bottom: 1px solid #e5e5e5; vertical-align: top; }
 td:first-child { white-space: nowrap; }
@@ -161,9 +159,9 @@ footer a { color: #666; }
 <p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin, from the command line, or through AI agents (MCP).</p>
 <p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden> <span id="downloads" hidden>Downloaded <strong></strong> times</span><span id="stats-and" hidden> and </span><span id="clones" hidden><span class="verb">cloned</span> <strong></strong> times on GitHub</span> so far.</span></p>
 
-<figure class="demo">
-  <img src="img/demo.gif" width="800" height="560" alt="Animation of the algorithm on a board with three supplies on one inner layer. Step 1: one net at a time, a Dijkstra search spreads from the vias already connected until it reaches the nearest unconnected via, and that path is added, until each net's vias form one tree; routes of different nets never cross. Step 2: every spot of the layer goes to the closest tree, measured around other copper. Step 3: the staircase borders are straightened into 0, 45 and 90 degree segments with a gap between the zones. Result: one continuous zone per supply.">
-  <figcaption>How it works, step by step on the demo board: connect each net's vias (Dijkstra searches), split the layer by nearest route, clean up the borders.</figcaption>
+<figure>
+  <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone with straight 45-degree edges.">
+  <figcaption>Same board, same vias. Left: plain Voronoi split, where nets break into islands. Right: kicad-splitplane, with every voltage in one piece.</figcaption>
 </figure>
 
 <p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it connects each net's vias with a path, splits the layer around those paths, and draws the borders with straight 0°/45°/90° edges.</p>
