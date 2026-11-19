@@ -33,6 +33,20 @@ from kipy.util.units import from_mm  # noqa: E402
 UNDO_MESSAGE = "kicad-splitplane"
 
 
+def board_file(board) -> str | None:
+    """Path of the open board's file on disk (None if unknown, e.g. never saved)."""
+    try:
+        doc = board.document
+        path = os.path.join(doc.project.path, doc.board_filename)
+    except Exception:
+        return None
+    return path if path.endswith(".kicad_pcb") else None
+
+
+def report_path(board_path: str) -> str:
+    return board_path[:-len(".kicad_pcb")] + "_splitplane_report.html"
+
+
 # =============================================================================
 # Board access (no GUI; also used by the tests)
 # =============================================================================
@@ -162,10 +176,20 @@ def run_dialog(board):
             ("smooth", "Smooth 45° outlines", True),
             ("plain", "Plain Voronoi (may create islands)", False),
             ("keep_old", "Keep existing zones of these nets", False),
-            ("fill", "Fill zones after applying", True)]:
+            ("fill", "Fill zones after applying", True),
+            ("rules", "Gap and edge from design rules", False),
+            ("keepouts", "Leave keepout areas free", False),
+            ("report", "Save HTML report next to the board", False)]:
         flags[key] = wx.CheckBox(panel, label=text_)
         flags[key].SetValue(default)
         side.Add(flags[key], 0, wx.TOP, 4)
+
+    def rules_toggled(_=None):
+        for k in ("gap", "edge"):
+            params[k].Enable(not flags["rules"].GetValue())
+
+    flags["rules"].Bind(wx.EVT_CHECKBOX, rules_toggled)
+    path = board_file(board)
 
     buttons = wx.BoxSizer(wx.HORIZONTAL)
     b_preview, b_apply, b_close = (wx.Button(panel, label=l) for l in ("Preview", "Apply", "Close"))
@@ -223,7 +247,7 @@ def run_dialog(board):
     def error(msg):
         wx.MessageBox(msg, "kicad-splitplane", wx.OK | wx.ICON_ERROR, frame)
 
-    state = {"key": None, "result": None, "busy": False}
+    state = {"key": None, "result": None, "busy": False, "gap": 0.5}
 
     def settings():
         nets = [shown[i] for i in box.GetCheckedItems()]
@@ -232,7 +256,8 @@ def run_dialog(board):
         except ValueError:
             raise ValueError("Parameters must be numbers.")
         return (layer.GetStringSelection(), nets, num,
-                flags["include_smd"].GetValue(), flags["plain"].GetValue(), flags["smooth"].GetValue())
+                flags["include_smd"].GetValue(), flags["plain"].GetValue(), flags["smooth"].GetValue(),
+                flags["rules"].GetValue(), flags["keepouts"].GetValue())
 
     def set_busy(busy):
         state["busy"] = busy
@@ -247,7 +272,15 @@ def run_dialog(board):
         except ValueError as e:
             error(str(e))
             return
-        lay, nets, num, smd, plain, smooth = key
+        lay, nets, num, smd, plain, smooth, rules, keepouts = key
+        gap, edge, notes = num["gap"], num["edge"], []
+        if rules:
+            # The saved project file: save the board first after changing the rules.
+            found = sp.design_rules(path, nets) if path else None
+            gap, edge, notes = sp.apply_rules(found)
+            for k, v in (("gap", gap), ("edge", edge)):
+                params[k].SetValue(f"{v:g}")
+            key = settings()  # with the values shown, so Apply does not recompute
         # Re-read the board each time: vias may have moved since the dialog opened.
         board_text = board.get_as_string()
 
@@ -256,11 +289,13 @@ def run_dialog(board):
 
         def work():
             try:
-                r = sp.compute(board_text, lay, nets, num["gap"], num["edge"], num["min_neck"],
-                               num["res"], smd, plain, progress=progress, smooth=smooth)
+                r = sp.compute(board_text, lay, nets, gap, edge, num["min_neck"],
+                               num["res"], smd, plain, progress=progress, smooth=smooth,
+                               keepouts=keepouts)
             except Exception as e:  # shown in the dialog
                 wx.CallAfter(done, None, e)
             else:
+                r.log[:0] = notes
                 wx.CallAfter(done, r, None)
 
         def done(r, e):
@@ -269,7 +304,7 @@ def run_dialog(board):
                 set_status("Failed.")
                 error(str(e) if isinstance(e, ValueError) else "".join(traceback.format_exception(e)))
                 return
-            state.update(key=repr(key), result=r)
+            state.update(key=repr(key), result=r, gap=gap)
             fig.clear()
             sp.draw(r, fig.add_subplot(111))
             render()
@@ -289,12 +324,22 @@ def run_dialog(board):
         set_status("Writing zones...")
         wx.SafeYield()
         try:
-            lines = apply(board, r, float(params["gap"].GetValue()),
+            lines = apply(board, r, state["gap"],
                           flags["keep_old"].GetValue(), flags["fill"].GetValue())
         except Exception as e:
             set_status("Failed.")
             error("".join(traceback.format_exception(e)))
             return
+        if flags["report"].GetValue():
+            if path:
+                try:
+                    import webbrowser
+                    lines.append("wrote " + sp.write_report(report_path(path), r, path, extra_log=lines))
+                    webbrowser.open("file://" + report_path(path))
+                except OSError as e:
+                    lines.append(f"report not written: {e}")
+            else:
+                lines.append("report not written: save the board first")
         # The API cannot set net colours, so explain how to show them.
         colors = [f"       {n:<12} {c}" for n, c in sp.net_colors(r.regions).items()]
         log.SetValue("\n".join(r.log + lines + [

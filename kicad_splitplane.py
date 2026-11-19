@@ -55,7 +55,7 @@ from shapely.affinity import rotate, translate
 from shapely.geometry import LineString, MultiPoint, Point, Polygon, box
 from shapely.ops import nearest_points, polygonize, unary_union, voronoi_diagram
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 
 # =============================================================================
@@ -257,6 +257,45 @@ def board_outline(board):
     if not polys:
         raise ValueError("Could not build a closed board outline from Edge.Cuts.")
     return max(polys, key=lambda p: p.area)
+
+
+def _on_layer(node, layer) -> bool:
+    """Does an item with (layer ...) or (layers ...) lie on copper `layer`?"""
+    lay = child(node, "layer") or child(node, "layers")
+    names = lay[1:] if lay else []
+    return (layer in names or "*.Cu" in names
+            or ("F&B.Cu" in names and layer in ("F.Cu", "B.Cu")))
+
+
+def keepout_areas(board, layer) -> list:
+    """Keepout areas (rule areas) on `layer` that forbid copper pours, as
+    polygons: on the board and inside footprints (both are stored in board
+    coordinates). Keepouts that only forbid tracks, vias or pads are skipped:
+    they do not stop a zone from filling."""
+    zones = children(board, "zone") + [z for fp in children(board, "footprint")
+                                       for z in children(fp, "zone")]
+    areas = []
+    for z in zones:
+        ko = child(z, "keepout")
+        pour = child(ko, "copperpour") if ko else None
+        if not pour or pour[1] != "not_allowed" or not _on_layer(z, layer):
+            continue
+        shape = Polygon()
+        for poly in children(z, "polygon"):
+            pts = []
+            for p in child(poly, "pts")[1:]:
+                if p[0] == "xy":
+                    pts.append((float(p[1]), float(p[2])))
+                elif p[0] == "arc":  # start, mid, end: approximated by 2 chords
+                    pts += [(float(child(p, k)[1]), float(child(p, k)[2])) for k in ("start", "mid", "end")]
+            if len(pts) < 3:
+                continue
+            ring = Polygon(pts).buffer(0)
+            # KiCad writes holes as further polygons after their outline.
+            shape = shape.difference(ring) if shape.contains(ring) else shape.union(ring)
+        if not shape.is_empty:
+            areas.append(shape)
+    return areas
 
 
 def _parts(geom):
@@ -720,11 +759,15 @@ class Result:
     ok: bool
     log: list = field(default_factory=list)
     holes: list = field(default_factory=list)
+    params: dict = field(default_factory=dict)  # gap, edge, ... as used
+    keepouts: list | None = None                 # None: keepouts not used
 
 
 def compute(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
-            include_smd=False, plain=False, progress=None, smooth=True) -> Result:
-    """Partition only; result.board_text is None. Raises ValueError on unusable input."""
+            include_smd=False, plain=False, progress=None, smooth=True, keepouts=False) -> Result:
+    """Partition only; result.board_text is None. Raises ValueError on unusable input.
+    keepouts=True leaves the layer's copper-pour keepout areas free: they are
+    cut out of the board outline before partitioning."""
     log = []
     nets = list(dict.fromkeys(nets))
     if len(nets) < 2:
@@ -741,19 +784,34 @@ def compute(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
         raise ValueError(f"No vias/THT pads found for: {', '.join(missing)}{hint}")
     outline = board_outline(board)
     holes = collect_holes(board, layer)
+    area, areas = outline, None
+    if keepouts:
+        areas = [a for a in keepout_areas(board, layer) if a.intersects(outline)]
+        if areas:
+            area = _polygons(outline.difference(unary_union(areas)))
+        log.append(f"{len(areas)} keepout area(s) on {layer} left free")
+        blocked = unary_union(areas) if areas else Polygon()
+        for x, y, n in seeds:
+            if blocked.contains(Point(x, y)):
+                log.append(f"! {n}: via/pad at ({x:.2f}, {y:.2f}) lies in a keepout area")
     if plain:
-        regions = voronoi_partition(seeds, outline, gap, edge, log)
+        regions = voronoi_partition(seeds, area, gap, edge, log)
     else:
-        regions = connected_partition(seeds, outline, gap, edge, log, res=res, progress=progress,
+        regions = connected_partition(seeds, area, gap, edge, log, res=res, progress=progress,
                                       holes=holes, min_neck=min_neck, pretty=smooth)
-    ok = check(regions, seeds, min_neck, log, holes, gap)
-    return Result(None, regions, seeds, outline, layer, ok, log, holes)
+    ok = check(regions, seeds, min_neck, log, holes, gap) and not any(
+        l.startswith("!") and "keepout" in l for l in log)
+    params = {"gap": gap, "edge": edge, "min_neck": min_neck, "res": res,
+              "include_smd": include_smd, "plain": plain, "smooth": smooth}
+    return Result(None, regions, seeds, outline, layer, ok, log, holes, params, areas)
 
 
 def process(text, layer, nets, gap=0.5, edge=0.5, min_neck=1.0, res=0.5,
-            include_smd=False, plain=False, keep_old=False, progress=None, smooth=True) -> Result:
+            include_smd=False, plain=False, keep_old=False, progress=None, smooth=True,
+            keepouts=False) -> Result:
     """Full pipeline on board text: compute() + write the zones into the text."""
-    r = compute(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, progress, smooth)
+    r = compute(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, progress, smooth,
+                keepouts)
     if not keep_old:
         text, n_old = strip_old_zones(text, layer, set(nets))
         if n_old:
@@ -776,6 +834,8 @@ def summary(result: Result) -> dict:
                   for n, r in sorted(result.regions.items())},
         "warnings": [line[1:].strip() for line in result.log if line.startswith("!")],
         "log": list(result.log),
+        # only when asked for, so the default output stays as before
+        **({"keepouts": len(result.keepouts)} if result.keepouts is not None else {}),
     }
 
 
@@ -829,20 +889,185 @@ def write_project(board_path, out_path, nets, colors=True) -> list[str]:
     return written
 
 
-def write_outputs(board_path, out_path, result: Result, colors=True) -> dict:
+def _pattern_match(pattern, name) -> bool:
+    """KiCad net class patterns: wildcards (* and ?) or a regular expression,
+    matched against the whole net name, ignoring case."""
+    wild = "".join(".*" if c == "*" else "." if c == "?" else re.escape(c) for c in pattern)
+    if re.fullmatch(wild, name, re.I):
+        return True
+    try:
+        return re.fullmatch(pattern, name, re.I) is not None
+    except re.error:
+        return False
+
+
+def design_rules(board_path, nets) -> dict | None:
+    """Clearances from the board's project file (<board>.kicad_pro), or None if
+    there is none. Returns {"file", "gap", "edge", "classes": {net: [class]},
+    "notes": [...]}:
+
+      gap   the largest clearance that applies between copper of two of `nets`:
+            their net classes' clearances and the board's minimum clearance
+            (KiCad uses the larger clearance of the two items).
+      edge  the board's copper-to-edge clearance (None if not set).
+
+    Custom rules (.kicad_dru) are not evaluated; a note says so if there are any."""
+    import json
+    import os
+    stem = re.sub(r"\.kicad_pcb$", "", board_path)
+    if not os.path.exists(stem + ".kicad_pro"):
+        return None
+    data = json.load(open(stem + ".kicad_pro", encoding="utf-8"))
+    ns = data.get("net_settings") or {}
+    classes = {c.get("name"): c for c in ns.get("classes") or []}
+    assigned = ns.get("netclass_assignments") or {}
+    patterns = ns.get("netclass_patterns") or []
+    of = {}
+    for n in nets:
+        names = assigned.get(n) or []
+        names = [names] if isinstance(names, str) else list(names)
+        names += [p.get("netclass") for p in patterns
+                  if p.get("pattern") and _pattern_match(p["pattern"], n)]
+        names += [c for c, v in classes.items() if n in (v.get("nets") or [])]  # KiCad 6
+        of[n] = list(dict.fromkeys(c for c in names if c)) or ["Default"]
+
+    def clearance(name):
+        value = (classes.get(name) or {}).get("clearance")
+        return (classes.get("Default") or {}).get("clearance") if value is None else value
+
+    rules = ((data.get("board") or {}).get("design_settings") or {}).get("rules") or {}
+    values = [clearance(c) for cs in of.values() for c in cs] + [rules.get("min_clearance")]
+    values = [float(v) for v in values if v is not None and float(v) > 0]  # 0 = not set
+    edge = rules.get("min_copper_edge_clearance")
+    notes = []
+    if os.path.exists(stem + ".kicad_dru"):
+        notes.append(f"custom rules in {os.path.basename(stem)}.kicad_dru are not read; "
+                     "check the gap against them")
+    return {"file": stem + ".kicad_pro", "gap": round(max(values), 4) if values else None,
+            "edge": None if edge is None else float(edge), "classes": of, "notes": notes}
+
+
+def apply_rules(rules, gap=None, edge=None, default_gap=0.5, default_edge=0.5):
+    """(gap, edge, log lines) from design_rules() output. An explicit gap/edge
+    is kept as a minimum; without rules the defaults are used."""
+    def pick(rule, given, default):
+        values = [v for v in (rule, given) if v is not None]
+        return max(values) if values else default
+
+    if rules is None:
+        return (pick(None, gap, default_gap), pick(None, edge, default_edge),
+                ["note: no project file (.kicad_pro) next to the board, design rules not read"])
+    r_gap, r_edge = rules["gap"], rules["edge"]
+    new_gap, new_edge = pick(r_gap, gap, default_gap), pick(r_edge, edge, default_edge)
+    classes = ", ".join(f"{n}={'/'.join(c)}" for n, c in rules["classes"].items())
+    def mm(v):
+        return "not set" if v is None else f"{v:g} mm"
+    log = [f"design rules: gap {new_gap:g} mm (clearance {mm(r_gap)}; net classes {classes}), "
+           f"edge {new_edge:g} mm (copper-to-edge {mm(r_edge)})"]
+    log += [f"  note: {n}" for n in rules["notes"]]
+    return new_gap, new_edge, log
+
+
+def report_html(result: Result, board_path=None, files=None, extra_log=()) -> str:
+    """A one-page HTML report (preview inlined, so it is a single file):
+    settings, status, zones per net, warnings, log and the written files.
+    Print it from the browser to get a PDF."""
+    import base64
+    import datetime
+    import html
+    import io
+    buf = io.BytesIO()
+    render_png(result, buf)
+    png = base64.b64encode(buf.getvalue()).decode()
+    s = summary(result)
+    e = html.escape
+    colors = net_colors(result.regions)
+    p = result.params or {}
+    settings = [("Board", board_path or "-"), ("Layer", result.layer),
+                ("Nets", ", ".join(s["nets"])),
+                ("Gap between zones", f"{p.get('gap', '-')} mm"),
+                ("Clearance to edge", f"{p.get('edge', '-')} mm"),
+                ("Warn below width", f"{p.get('min_neck', '-')} mm"),
+                ("Grid resolution", f"{p.get('res', '-')} mm"),
+                ("Mode", "plain Voronoi" if p.get("plain") else "connected"),
+                ("SMD pads as stand-in vias", "yes (preview only)" if p.get("include_smd") else "no"),
+                ("Keepout areas", "not used" if result.keepouts is None
+                 else f"{len(result.keepouts)} left free")]
+    rows = "".join(
+        f'<tr><td><span class="sw" style="background:{colors[n]}"></span>{e(n)}</td>'
+        f'<td>{z["parts"]}</td><td>{z["area_mm2"]:.1f}</td><td>{z["seeds"]}</td></tr>'
+        for n, z in s["zones"].items())
+    warn = ("".join(f"<li>{e(w)}</li>" for w in s["warnings"])
+            or "<li class=ok>none</li>")
+    log = e("\n".join(s["log"] + list(extra_log)))
+    out = ""
+    if files:
+        paths = [files.get("board"), files.get("preview"), *files.get("project", [])]
+        out = "<h2>Files</h2><ul>" + "".join(f"<li><code>{e(f)}</code></li>" for f in paths if f) + "</ul>"
+    status = ('<p class="status ok">OK: one connected zone per net</p>' if s["ok"] else
+              f'<p class="status bad">{len(s["warnings"])} warning(s), see below</p>')
+    when = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<title>kicad-splitplane report: {e(result.layer)}</title>
+<style>
+body {{ font: 15px/1.45 system-ui, sans-serif; max-width: 900px; margin: 2em auto; padding: 0 1em; color: #222; }}
+h1 {{ font-size: 1.5em; margin-bottom: .2em; }} h2 {{ font-size: 1.15em; margin-top: 1.6em; }}
+.meta {{ color: #666; margin-top: 0; }}
+table {{ border-collapse: collapse; }} td, th {{ border-bottom: 1px solid #ddd; padding: .3em .9em .3em 0; text-align: left; }}
+th {{ font-weight: 600; }} .num td:not(:first-child), .num th:not(:first-child) {{ text-align: right; }}
+.sw {{ display: inline-block; width: .9em; height: .9em; border-radius: 2px; margin-right: .5em; vertical-align: -.1em; }}
+.status {{ font-weight: 600; padding: .5em .8em; border-radius: 4px; display: inline-block; }}
+.ok {{ color: #1f7a3a; }} .status.ok {{ background: #e5f4ea; }} .status.bad {{ background: #fdeaea; color: #a52a2a; }}
+img {{ max-width: 100%; border: 1px solid #ddd; }}
+pre {{ background: #f6f6f6; padding: .8em; overflow-x: auto; font-size: 13px; white-space: pre-wrap; }}
+@media print {{ body {{ margin: 0; max-width: none; }} pre {{ white-space: pre-wrap; }} }}
+</style></head><body>
+<h1>Split plane report: {e(result.layer)}</h1>
+<p class="meta">kicad-splitplane {__version__} &middot; {when}</p>
+{status}
+<p><img src="data:image/png;base64,{png}" alt="preview of the zones"></p>
+<h2>Zones</h2>
+<table class="num"><tr><th>Net</th><th>Zones</th><th>Area [mm&sup2;]</th><th>Vias/pads</th></tr>{rows}</table>
+<h2>Warnings</h2><ul>{warn}</ul>
+<h2>Settings</h2>
+<table>{"".join(f"<tr><th>{e(k)}</th><td>{e(str(v))}</td></tr>" for k, v in settings)}</table>
+{out}
+<h2>Log</h2><pre>{log}</pre>
+<p class="meta">Next: open the board in KiCad, fill all zones (B) and run DRC.</p>
+</body></html>
+"""
+
+
+def write_report(path, result: Result, board_path=None, files=None, extra_log=()) -> str:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(report_html(result, board_path, files, extra_log))
+    return path
+
+
+def write_outputs(board_path, out_path, result: Result, colors=True, report=False) -> dict:
     """Write the board, the preview PNG and the project files next to
-    `out_path`, as the CLI does. Returns {"board", "preview", "project": [...]}."""
+    `out_path`, as the CLI does. Returns {"board", "preview", "project": [...]}
+    and, with report=True (or a path), "report": an HTML report."""
     with open(out_path, "w", encoding="utf-8") as f:
         f.write(result.board_text)
     png = re.sub(r"\.kicad_pcb$", "", out_path) + ".png"
     render_png(result, png)
-    return {"board": out_path, "preview": png,
-            "project": write_project(board_path, out_path, result.regions, colors=colors)}
+    files = {"board": out_path, "preview": png,
+             "project": write_project(board_path, out_path, result.regions, colors=colors)}
+    if report:
+        path = report if isinstance(report, str) else re.sub(r"\.kicad_pcb$", "", out_path) + "_report.html"
+        files["report"] = write_report(path, result, board_path, files)
+    return files
 
 
 def draw(result: Result, ax, title=None):
     """Plot zones and seeds onto a matplotlib Axes."""
     ax.plot(*result.outline.exterior.xy, color="#222", lw=1.5)
+    for k, a in enumerate(result.keepouts or []):
+        for p in _parts(a):
+            ax.fill(*p.exterior.xy, facecolor="none", edgecolor="#777", hatch="///", lw=0.8,
+                    zorder=2, label="keepout" if k == 0 else None)
     for h in result.holes:
         if h.net not in result.regions:
             ax.fill(*h.shape.exterior.xy, color="#999", lw=0, zorder=3)
@@ -890,8 +1115,8 @@ def main(argv=None):
     ap.add_argument("--layer", default="In2.Cu", help="target copper layer (default In2.Cu)")
     ap.add_argument("--nets", nargs="+", help="power nets to place on the layer")
     ap.add_argument("--list-nets", action="store_true", help="show supply-like nets and exit")
-    ap.add_argument("--gap", type=float, default=0.5, help="gap between zones [mm]")
-    ap.add_argument("--edge", type=float, default=0.5, help="clearance to board edge [mm]")
+    ap.add_argument("--gap", type=float, help="gap between zones [mm] (default 0.5)")
+    ap.add_argument("--edge", type=float, help="clearance to board edge [mm] (default 0.5)")
     ap.add_argument("--min-neck", type=float, default=1.0, help="warn below this copper width [mm]")
     ap.add_argument("--res", type=float, default=0.5, help="grid resolution [mm]; try 0.3-0.6 if vias get trapped")
     ap.add_argument("--include-smd", action="store_true", help="use SMD pads as stand-in vias (preview before fanout)")
@@ -899,6 +1124,13 @@ def main(argv=None):
     ap.add_argument("--no-smooth", action="store_true", help="keep the raw grid outlines instead of smooth 45-degree ones")
     ap.add_argument("--keep-old", action="store_true", help="keep existing zones of these nets on the layer")
     ap.add_argument("--no-colors", action="store_true", help="don't give the nets their preview colours in the project file")
+    ap.add_argument("--rules", action="store_true",
+                    help="take gap and edge clearance from the board's design rules (.kicad_pro); "
+                         "--gap/--edge then act as minimums")
+    ap.add_argument("--keepouts", action="store_true",
+                    help="leave the layer's keepout areas (no copper pour) free")
+    ap.add_argument("--report", nargs="?", const=True, metavar="HTML",
+                    help="also write an HTML report (default: <out>_report.html)")
     ap.add_argument("--out", help="output board (default: <board>_splitplane.kicad_pcb)")
     ap.add_argument("--json", action="store_true",
                     help="print one JSON object instead of text (same files and exit codes)")
@@ -915,21 +1147,33 @@ def main(argv=None):
         return 0
     if not a.nets:
         ap.error("--nets is required (use --list-nets to see candidates)")
+    gap, edge, notes = _gap_edge(a)
     try:
-        r = process(text, a.layer, a.nets, a.gap, a.edge, a.min_neck, a.res,
-                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth,
+        r = process(text, a.layer, a.nets, gap, edge, a.min_neck, a.res,
+                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth, keepouts=a.keepouts,
                     progress=lambda i, n: print(f"  routing order {i + 1}/{n}", end="\r", file=sys.stderr))
     except ValueError as e:
         sys.exit(f"error: {e}")
+    r.log[:0] = notes
     print(" " * 40, end="\r", file=sys.stderr)
     for line in r.log:
         print(("  " if line.startswith("!") else "") + line)
     out = a.out or re.sub(r"\.kicad_pcb$", "", a.board) + "_splitplane.kicad_pcb"
-    files = write_outputs(a.board, out, r, colors=not a.no_colors)
+    files = write_outputs(a.board, out, r, colors=not a.no_colors, report=a.report or False)
     print(f"wrote {files['board']}\nwrote {files['preview']}")
     for path in files["project"]:
         print(f"wrote {path}" + ("" if a.no_colors else " (net colours as in the preview)"))
+    if "report" in files:
+        print(f"wrote {files['report']}")
     return 0 if r.ok else 1
+
+
+def _gap_edge(a):
+    """gap, edge and log lines for the CLI: the options, or with --rules the
+    board's design rules (an explicit --gap/--edge is then a minimum)."""
+    if not a.rules:
+        return (0.5 if a.gap is None else a.gap), (0.5 if a.edge is None else a.edge), []
+    return apply_rules(design_rules(a.board, a.nets), a.gap, a.edge)
 
 
 def _main_json(ap, a):
@@ -946,14 +1190,18 @@ def _main_json(ap, a):
         return 0
     if not a.nets:
         ap.error("--nets is required (use --list-nets to see candidates)")
+    gap, edge, notes = _gap_edge(a)
     try:
-        r = process(text, a.layer, a.nets, a.gap, a.edge, a.min_neck, a.res,
-                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth)
+        r = process(text, a.layer, a.nets, gap, edge, a.min_neck, a.res,
+                    a.include_smd, a.plain, a.keep_old, smooth=not a.no_smooth, keepouts=a.keepouts)
     except ValueError as e:
         _print_json({"ok": False, "error": str(e)})
         return 1
+    r.log[:0] = notes
     out = a.out or re.sub(r"\.kicad_pcb$", "", a.board) + "_splitplane.kicad_pcb"
-    _print_json({**summary(r), "files": write_outputs(a.board, out, r, colors=not a.no_colors)})
+    extra = {"gap": gap, "edge": edge} if a.rules else {}
+    _print_json({**summary(r), **extra,
+                 "files": write_outputs(a.board, out, r, colors=not a.no_colors, report=a.report or False)})
     return 0 if r.ok else 1
 
 

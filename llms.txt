@@ -12,13 +12,13 @@ Use it when several supply nets share one plane layer. Never for GND (GND gets i
 
 ## Use
 
-- MCP server (stdio): `uvx kicad-splitplane-mcp`, tools `list_power_nets(board_path, all_nets=False)` and `split_plane(board_path, nets, layer="In2.Cu", gap=0.5, edge=0.5, min_neck=1.0, res=0.5, include_smd=False, plain=False, keep_old=False, out_path=None)`. MCP Registry name: io.github.atuzlak/kicad-splitplane
-- Command line: `pip install kicad-splitplane`, then `kicad-splitplane board.kicad_pcb --list-nets --json` and `kicad-splitplane board.kicad_pcb --layer In2.Cu --nets +5V +3V3 --json`. Exit code 0 = clean, 1 = warnings or error, 2 = bad arguments
+- MCP server (stdio): `uvx kicad-splitplane-mcp`, tools `list_power_nets(board_path, all_nets=False)` and `split_plane(board_path, nets, layer="In2.Cu", gap=0.5, edge=0.5, min_neck=1.0, res=0.5, include_smd=False, plain=False, keep_old=False, out_path=None, use_rules=False, keepouts=False, report=False)`. MCP Registry name: io.github.atuzlak/kicad-splitplane
+- Command line: `pip install kicad-splitplane`, then `kicad-splitplane board.kicad_pcb --list-nets --json` and `kicad-splitplane board.kicad_pcb --layer In2.Cu --nets +5V +3V3 --json`. Exit code 0 = clean, 1 = warnings or error, 2 = bad arguments. Opt-in: `--rules` (gap and edge from the design rules in <board>.kicad_pro), `--keepouts` (leave keepout areas free), `--report` (HTML report)
 - Python: `import kicad_splitplane as sp; r = sp.process(text, "In2.Cu", ["+5V", "+3V3"]); sp.summary(r)`
 
 ## Result
 
-`ok` (true = one connected zone per net), `layer`, `nets`, `zones` {net: {parts, area_mm2, seeds}}, `warnings` (trapped vias with a suggested new position, islands, thin necks, unconnected pads), `log`, `files` {board, preview, project}. Errors: `{"ok": false, "error": "..."}`.
+`ok` (true = one connected zone per net), `layer`, `nets`, `zones` {net: {parts, area_mm2, seeds}}, `warnings` (trapped vias with a suggested new position, islands, thin necks, unconnected pads), `log`, `files` {board, preview, project, report}; with use_rules also `gap`/`edge`, with keepouts `keepouts` (count). Errors: `{"ok": false, "error": "..."}`.
 
 ## Optional
 

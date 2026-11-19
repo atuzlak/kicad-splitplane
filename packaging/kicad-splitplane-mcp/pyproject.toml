@@ -7,13 +7,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kicad-splitplane-mcp"
-version = "0.5.0"
+version = "0.6.0"
 description = "MCP server for kicad-splitplane: lets AI agents split KiCad power planes"
 readme = "README.md"
 license = "MIT"
 authors = [{ name = "Aleksandar Tuzlak" }]
 requires-python = ">=3.10"
-dependencies = ["kicad-splitplane[mcp]==0.5.0"]
+dependencies = ["kicad-splitplane[mcp]==0.6.0"]
 keywords = ["kicad", "pcb", "power-plane", "mcp", "mcp-server", "ai-agents"]
 classifiers = [
   "Programming Language :: Python :: 3",
