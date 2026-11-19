@@ -337,7 +337,9 @@ def voronoi_partition(seeds, outline, gap, edge, log):
 # nets and has to be moved; a target position is suggested.
 def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
                         max_orders=24, progress=None, holes=(), min_neck=1.0,
-                        min_copper=0.25, ring=0.5, pretty=True):
+                        min_copper=0.25, ring=0.5, pretty=True, trace=None):
+    """trace (optional): called as trace(stage, data) with the intermediate
+    steps, for illustrations (web/make_gif.py); it does not change the result."""
     usable = outline.buffer(-edge)
     x0, y0, x1, y1 = outline.bounds
     W, H = int(math.ceil((x1 - x0) / res)), int(math.ceil((y1 - y0) / res))
@@ -391,7 +393,7 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
         return coo_matrix((np.concatenate(w), (np.concatenate(rows), np.concatenate(cols))),
                           shape=(H * W, H * W)).tocsr()
 
-    def route_net(net, blocked, cost):
+    def route_net(net, blocked, cost, rec=None):
         free = inside & ~blocked | own[net]
         for r, c in seed_cells[net]:
             free[r, c] = True
@@ -409,14 +411,18 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
                 break
             t = min(reach, key=lambda k: dist[k])
             total += dist[t]
+            if rec is not None:
+                rec.append({"dist": dist.reshape(H, W).astype(np.float32), "target": t, "path": []})
             while t >= 0 and t not in tree:
                 tree.add(t)
                 spine.flat[t] = True
+                if rec is not None:
+                    rec[-1]["path"].append(t)
                 t = pred[t]
             todo -= tree
         return spine, failed, total
 
-    def attempt(order):
+    def attempt(order, rec=None):
         spines, failed, total = {}, [], 0.0
         for net in order:
             foreign = np.zeros((H, W), bool)
@@ -429,7 +435,10 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
             d = ndimage.distance_transform_edt(~foreign)
             blocked = (d <= block_r) | hard_seed[net] | hard_other
             narrow = (d <= narrow_r) | narrow_seed[net] | narrow_other
-            sp, f, t = route_net(net, blocked, 1.0 + 4.0 / np.maximum(d, 0.5) + 8.0 * narrow)
+            steps_ = [] if rec is not None else None
+            sp, f, t = route_net(net, blocked, 1.0 + 4.0 / np.maximum(d, 0.5) + 8.0 * narrow, steps_)
+            if rec is not None:
+                rec[net] = {"blocked": blocked, "steps": steps_, "start": seed_cells[net][0]}
             spines[net] = sp
             total += t
             failed += [(net, divmod(k, W)) for k in f]
@@ -452,6 +461,11 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
             break
     _, order, (spines, failed, _) = best
     log.append(f"routing order: {' -> '.join(order)}")
+    if trace:
+        rec = {}
+        attempt(order, rec)  # the winning order once more, recording each search
+        trace("routing", {"grid": (x0, y0, res, H, W), "inside": inside, "order": order,
+                          "nets": rec, "spines": spines})
 
     srcs = np.zeros((H, W), bool)
     owner = np.full((H, W), -1)
@@ -478,10 +492,13 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
     _, (ir, ic) = ndimage.distance_transform_edt(~srcs, return_indices=True)
     label = owner[ir, ic]
     g = grid_graph((inside & ~core) | srcs, np.ones((H, W)))
-    _, _, nearest = dijkstra(g, directed=False, indices=np.flatnonzero(srcs),
-                             min_only=True, return_predecessors=True)
+    gdist, _, nearest = dijkstra(g, directed=False, indices=np.flatnonzero(srcs),
+                                 min_only=True, return_predecessors=True)
     reached = nearest >= 0
     label.flat[reached] = owner.flat[nearest[reached]]
+    if trace:
+        trace("split", {"nets": nets, "srcs": srcs, "label": label.copy(),
+                        "dist": gdist.reshape(H, W), "inside": inside})
 
     cells = {}
     for i, n in enumerate(nets):
@@ -495,6 +512,8 @@ def connected_partition(seeds, outline, gap, edge, log, res=0.5, keepout=0.35,
     keep = {n: [Point(x, y).buffer(r + clear) for x, y, r in pads[n]] for n in nets}
     regions = tidy(cells, usable, gap, keep, holes, min_neck,
                    [16 * res, 12 * res, 8 * res, 4 * res, 2 * res] if pretty else [])
+    if trace:
+        trace("tidy", {"raw": {n: c.intersection(usable) for n, c in cells.items()}, "regions": regions})
 
     for n, (r, c) in failed:
         p = Point(cx[c], cy[r])

@@ -1,0 +1,22 @@
+cff-version: 1.2.0
+message: "If you use kicad-splitplane in your work, please cite it as below."
+title: "kicad-splitplane: one continuous copper zone per supply net for KiCad power layers"
+type: software
+authors:
+  - family-names: Tuzlak
+    given-names: Aleksandar
+    affiliation: ETH Zurich
+license: MIT
+repository-code: "https://github.com/atuzlak/kicad-splitplane"
+url: "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane.html"
+abstract: >-
+  Splits a KiCad power layer into exactly one continuous copper zone per
+  supply net, computed from the nets' vias and through-hole pads, and writes
+  the zones into the board. KiCad 9/10 plugin, command-line tool, Python
+  library and MCP server.
+keywords:
+  - KiCad
+  - PCB design
+  - power plane
+  - split plane
+  - EDA
