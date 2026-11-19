@@ -112,6 +112,7 @@ footer a { color: #666; }
     <li><a href="#cli">Command line</a>
       <ul>
         <li><a href="#options">Options</a></li>
+        <li><a href="#extras">Rules, keepouts, report</a></li>
         <li><a href="#python">From Python</a></li>
       </ul></li>
     <li><a href="#agents">AI agents (MCP)</a></li>
@@ -183,6 +184,9 @@ footer a { color: #666; }
     <tr><td>Plain Voronoi</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
     <tr><td>Keep existing zones</td><td>off</td><td>Don't replace zones of these nets already on the layer</td></tr>
     <tr><td>Fill zones after applying</td><td>on</td><td>Run KiCad's zone fill right after Apply</td></tr>
+    <tr><td>Gap and edge from design rules</td><td>off</td><td>Take the gap and the edge clearance from the board's design rules (saved project file); see <a href="#extras">below</a></td></tr>
+    <tr><td>Leave keepout areas free</td><td>off</td><td>Plan the zones around keepout areas instead of through them</td></tr>
+    <tr><td>Save HTML report next to the board</td><td>off</td><td>On Apply, write a one-page report and open it in the browser</td></tr>
   </tbody>
 </table>
 
@@ -196,6 +200,7 @@ footer a { color: #666; }
     <tr><td>pad/via … is not connected to its zone</td><td>The zone does not reach this pad once KiCad clears around other copper.</td></tr>
     <tr><td>another KiCad window is using the KiCad API</td><td>Only one KiCad instance can serve plugins. Close the other KiCad windows (e.g. a board opened by double-click while KiCad was already open), open the board again and retry.</td></tr>
     <tr><td>copper cut into … pieces</td><td>A row of other pads (e.g. a pin header) cuts the zone apart.</td></tr>
+    <tr><td>via/pad … lies in a keepout area</td><td>With keepouts on: a via of the net sits where copper pours are not allowed. Move it, or check the keepout's layers.</td></tr>
   </tbody>
 </table>
 
@@ -225,18 +230,40 @@ kicad-splitplane board.kicad_pcb --layer In2.Cu --nets 5V 3.3V VBUS</code></pre>
     <tr><td>--no-smooth</td><td>off</td><td>Keep the raw grid outlines instead of 0°/45°/90° edges</td></tr>
     <tr><td>--plain</td><td>off</td><td>Skip connecting the vias (faster, may create islands)</td></tr>
     <tr><td>--keep-old</td><td>off</td><td>Keep existing zones of these nets on the layer</td></tr>
+    <tr><td>--rules</td><td>off</td><td>Gap and edge clearance from the board's design rules; <code>--gap</code>/<code>--edge</code> then act as minimums</td></tr>
+    <tr><td>--keepouts</td><td>off</td><td>Leave the layer's keepout areas free</td></tr>
+    <tr><td>--report [file]</td><td>off</td><td>Also write an HTML report (default <code>board_splitplane_report.html</code>)</td></tr>
     <tr><td>--no-colors</td><td>off</td><td>Don't colour the nets in the copied project file</td></tr>
     <tr><td>--json</td><td>off</td><td>Print the result as one JSON object (for scripts and agents): ok, zones per net, warnings, the written files. Same files and exit codes</td></tr>
   </tbody>
 </table>
 
+<h3 id="extras">Design rules, keepout areas and report</h3>
+<p>Three optional settings, all off by default (without them nothing changes):</p>
+<ul>
+  <li><strong>Design rules</strong> (<code>--rules</code>, or <em>Gap and edge from design rules</em> in the dialog). The gap between zones becomes the largest clearance that applies to the chosen nets: their net classes in Board Setup and the board's minimum clearance. The edge clearance becomes the board's copper-to-edge clearance. The values are read from the saved project file (<code>board.kicad_pro</code>) and printed in the log. Custom rules (<code>.kicad_dru</code>) are not read; the log says so if the board has any.</li>
+  <li><strong>Keepout areas</strong> (<code>--keepouts</code>). Rule areas that forbid copper pours on the layer, e.g. under an antenna or around a mounting hole, on the board or inside footprints, are left free and the zones are planned around them. Without it the zones run through them and KiCad cuts them there when filling. If a keepout crosses a zone, part of the net can lose its connection. In the example below, KiCad's fill leaves 5 of the 12 +5V vias unconnected without the option, and none with it.</li>
+  <li><strong>Report</strong> (<code>--report</code>). One HTML page with the preview, the zones per net, the warnings, the settings used and the log. Print it from the browser to get a PDF.</li>
+</ul>
+<pre><code>kicad-splitplane board.kicad_pcb --nets +5V +3V3 +1V8 --rules --keepouts --report</code></pre>
+<figure>
+  <img src="img/keepouts.png" width="1560" height="624" alt="Two previews of the demo board with two hatched keepout areas, a strip on the left and a rectangle in the top right corner. Left, without the keepout option: the +5V zone runs across the strip and +3V3 and +1V8 cover the corner. Right, with the option: both areas are left free and +5V reaches its lower vias around the end of the strip.">
+  <figcaption>The demo board with two keepout areas (hatched). Left: planned without <code>--keepouts</code>, so +5V runs through the strip and KiCad's fill later cuts it in two. Right: with <code>--keepouts</code>, the zones go around both areas.</figcaption>
+</figure>
+
 <h3 id="python">From Python</h3>
 <pre><code>import kicad_splitplane as sp
 
-r = sp.process(open("board.kicad_pcb").read(), "In2.Cu", ["5V", "3.3V", "VBUS"])
+text = open("board.kicad_pcb").read()
+r = sp.process(text, "In2.Cu", ["5V", "3.3V", "VBUS"])
 print(r.log)
 sp.render_png(r, "preview.png")
-sp.summary(r)   # dict: ok, zones per net, warnings</code></pre>
+sp.summary(r)   # dict: ok, zones per net, warnings
+
+# optional: design rules, keepout areas, report
+gap, edge, notes = sp.apply_rules(sp.design_rules("board.kicad_pcb", ["5V", "3.3V", "VBUS"]))
+r = sp.process(text, "In2.Cu", ["5V", "3.3V", "VBUS"], gap=gap, edge=edge, keepouts=True)
+sp.write_report("report.html", r, "board.kicad_pcb")</code></pre>
 
 <h2 id="agents">Use with AI agents (MCP)</h2>
 <p>kicad-splitplane includes an <a href="https://modelcontextprotocol.io">MCP</a> server, so AI assistants such as Claude, Cursor or VS Code can split power planes for you. Ask for example: <em>“Split In2.Cu of board.kicad_pcb between +5V, +3V3 and +1V8.”</em> The agent finds the supply nets, runs the split, explains the warnings, and you check the result in KiCad.</p>
@@ -271,6 +298,7 @@ sp.summary(r)   # dict: ok, zones per net, warnings</code></pre>
 
 <h2 id="changes">Changes</h2>
 <ul>
+  <li><strong>0.6.0</strong>: three optional settings, all off by default: gap and edge clearance from the board's design rules (<code>--rules</code>), keepout areas left free (<code>--keepouts</code>), and an HTML report (<code>--report</code>). Also in the plugin dialog and the MCP server. Without them the output is unchanged.</li>
   <li><strong>0.5.0</strong>: works with AI agents: an MCP server (<code>uvx kicad-splitplane-mcp</code>), JSON output with <code>--json</code>, and <code>pip install kicad-splitplane</code> from PyPI. The split itself is unchanged.</li>
   <li><strong>November 2026</strong>: listed in KiCad's official Plugin and Content Manager.</li>
   <li><strong>0.4.1</strong>: the command line also writes a copy of the project files, so the new board keeps your design rules and shows every zone in its own colour; the plugin explains how to colour the zones and gives a clear message when two KiCad windows compete for the API.</li>

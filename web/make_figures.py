@@ -45,6 +45,30 @@ def main():
         (sp.compute(board, "In2.Cu", stress_board.NETS), "Smoothed: 0°/45°/90° edges"),
     ])
 
+    keepouts(demo, nets)
+
+
+KEEPOUTS = """
+	(zone (net 0) (net_name "") (layer "In2.Cu") (uuid "00000000-0000-0000-0000-0000000000a1")
+		(name "keepout") (keepout (tracks allowed) (vias allowed) (pads allowed) (copperpour not_allowed) (footprints allowed))
+		(polygon (pts (xy 100 88) (xy 123 88) (xy 123 91) (xy 100 91))))
+	(zone (net 0) (net_name "") (layer "In2.Cu") (uuid "00000000-0000-0000-0000-0000000000a2")
+		(name "antenna") (keepout (tracks not_allowed) (vias not_allowed) (pads allowed) (copperpour not_allowed) (footprints allowed))
+		(polygon (pts (xy 163 60) (xy 180 60) (xy 180 80) (xy 163 80))))
+"""
+
+
+def keepouts(demo, nets):
+    """The demo board with two keepout areas, planned without and with --keepouts."""
+    end = demo.rstrip().rfind(")")
+    board = demo[:end] + KEEPOUTS + ")\n"
+    without = sp.compute(board, "In2.Cu", nets)
+    without.keepouts = sp.keepout_areas(sp.parse_sexpr(board), "In2.Cu")  # only drawn
+    side_by_side(os.path.join(IMG, "keepouts.png"), [
+        (without, "Without --keepouts: zones run through them"),
+        (sp.compute(board, "In2.Cu", nets, keepouts=True), "With --keepouts: zones go around them"),
+    ])
+
 
 if __name__ == "__main__":
     main()

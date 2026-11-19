@@ -93,7 +93,19 @@ Parameters (mm): gap between zones (0.5), edge clearance to the board edge
 (0.5), min_neck warning width (1.0), res grid resolution (0.5; 0.3-0.6 if vias
 get trapped). plain=True skips connecting the vias (faster, may give islands).
 keep_old=True keeps existing zones of these nets on the layer (default: they
-are replaced)."""
+are replaced).
+
+Optional (all off by default):
+- use_rules=True takes gap and edge from the board's design rules
+  (<board>.kicad_pro: net class clearances, minimum clearance, copper-to-edge
+  clearance); gap/edge, if given, are then minimums. Recommended whenever the
+  board has a project file.
+- keepouts=True leaves the layer's keepout areas (rule areas that forbid copper
+  pours) free, so zones route around them. Recommended if the board has
+  keepouts (antennas, mounting holes); otherwise KiCad cuts the zones there
+  when filling and a net can lose its connection.
+- report=True also writes <out>_report.html: preview, zones, warnings and
+  settings on one page, for the user to read or print."""
 
 
 def _board(board_path: str) -> str:
@@ -117,10 +129,11 @@ def list_power_nets(board_path: str, all_nets: bool = False) -> dict:
             "nets": [{"name": n, "vias_tht": t, "smd": s} for n, t, s in nets]}
 
 
-def split_plane(board_path: str, nets: List[str], layer: str = "In2.Cu", gap: float = 0.5,
-                edge: float = 0.5, min_neck: float = 1.0, res: float = 0.5,
-                include_smd: bool = False, plain: bool = False, keep_old: bool = False,
-                out_path: Optional[str] = None) -> dict:
+def split_plane(board_path: str, nets: List[str], layer: str = "In2.Cu",
+                gap: Optional[float] = None, edge: Optional[float] = None, min_neck: float = 1.0,
+                res: float = 0.5, include_smd: bool = False, plain: bool = False,
+                keep_old: bool = False, out_path: Optional[str] = None, use_rules: bool = False,
+                keepouts: bool = False, report: bool = False) -> dict:
     path = _board(board_path)
     out = (os.path.abspath(os.path.expanduser(out_path)) if out_path
            else re.sub(r"\.kicad_pcb$", "", path) + "_splitplane.kicad_pcb")
@@ -131,11 +144,19 @@ def split_plane(board_path: str, nets: List[str], layer: str = "In2.Cu", gap: fl
     if not os.path.isdir(os.path.dirname(out)):
         raise ToolError(f"Output folder does not exist: {os.path.dirname(out)}")
     text = open(path, encoding="utf-8").read()
+    notes = []
+    if use_rules:
+        gap, edge, notes = sp.apply_rules(sp.design_rules(path, nets), gap, edge)
+    gap = 0.5 if gap is None else gap
+    edge = 0.5 if edge is None else edge
     try:
-        r = sp.process(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, keep_old)
+        r = sp.process(text, layer, nets, gap, edge, min_neck, res, include_smd, plain, keep_old,
+                       keepouts=keepouts)
     except ValueError as e:
         raise ToolError(str(e)) from e
-    result = {**sp.summary(r), "files": sp.write_outputs(path, out, r)}
+    r.log[:0] = notes
+    result = {**sp.summary(r), **({"gap": gap, "edge": edge} if use_rules else {}),
+              "files": sp.write_outputs(path, out, r, report=report)}
     if include_smd:
         result["note"] = ("Preview only: SMD pads stood in for vias. Place the vias, then run "
                           "again without include_smd.")

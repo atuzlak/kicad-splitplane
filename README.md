@@ -54,7 +54,7 @@ The same tool also runs inside the PCB editor (KiCad 9 or newer). It works on th
    KiCad installs the Python dependencies on first use, which takes a minute.
 3. In the PCB editor, click the **Split power plane** toolbar button, pick the layer and nets, press **Preview**, then **Apply**.
 
-The dialog has the same options as the command line. It uses the wxPython that ships with KiCad, so nothing else needs to be installed.
+The dialog has the same options as the command line, including *Gap and edge from design rules* (read from the saved project file), *Leave keepout areas free* and *Save HTML report next to the board*. It uses the wxPython that ships with KiCad, so nothing else needs to be installed.
 
 For development, link the folder into KiCad's plugin directory instead of installing the zip (e.g. `~/.local/share/kicad/10.0/plugins/`, or `~/.var/app/org.kicad.KiCad/data/kicad/10.0/plugins/` for the Flatpak; a Flatpak cannot follow a symlink, so copy the folder together with `kicad_splitplane.py` there), or run `python plugin/splitplane_action.py` while KiCad has a board open.
 
@@ -73,11 +73,20 @@ For development, link the folder into KiCad's plugin directory instead of instal
 | `--no-smooth` | off | Keep the raw grid outlines instead of smooth 0°/45°/90° edges |
 | `--plain` | off | Skip connecting the vias (faster, may create islands) |
 | `--keep-old` | off | Keep existing zones of these nets on the layer (default: replaced) |
+| `--rules` | off | Take the gap and the edge clearance from the board's design rules in `<board>.kicad_pro`: the largest clearance of the chosen nets' net classes (and the board minimum), and the copper-to-edge clearance. `--gap`/`--edge` then act as minimums. Custom rules (`.kicad_dru`) are not read; the log says so |
+| `--keepouts` | off | Leave the layer's keepout areas free (rule areas that forbid copper pours, on the board or in footprints): zones are planned around them. Without it, KiCad cuts the zones there when filling, which can disconnect part of a net |
+| `--report [FILE]` | off | Also write an HTML report: preview, zones per net, warnings, settings and log on one page (default `<out>_report.html`; print it from the browser for a PDF) |
 | `--no-colors` | off | Don't colour the nets in the copied project file |
 | `--out` | `<board>_splitplane.kicad_pcb` | Output file |
 | `--json` | off | Print one JSON object instead of text: `ok`, zones per net (`parts`, `area_mm2`, `seeds`), `warnings`, `log` and the written `files`. Same files and exit codes; errors give `{"ok": false, "error": ...}`. With `--list-nets`: the nets as JSON |
 
 Exit code is `0` when every net got one clean zone, `1` when there are warnings.
+
+`--rules`, `--keepouts` and `--report` are opt-in: without them the output is exactly as before. For a board with a project file and keepouts, a typical call is
+
+```bash
+kicad-splitplane board.kicad_pcb --nets +5V +3V3 +1V8 --rules --keepouts --report
+```
 
 ## Use with AI agents (MCP)
 
@@ -98,7 +107,7 @@ Claude Code: `claude mcp add kicad-splitplane -- uvx kicad-splitplane-mcp`. With
 It has two tools:
 
 - `list_power_nets(board_path, all_nets=False)`: the supply-like nets with their via/THT and SMD pad counts, and the copper layers.
-- `split_plane(board_path, nets, layer="In2.Cu", gap, edge, min_neck, res, include_smd, plain, keep_old, out_path)`: the same as the command line; returns the result as with `--json`. It always writes a new board (`<board>_splitplane.kicad_pcb` by default) and never overwrites the input.
+- `split_plane(board_path, nets, layer="In2.Cu", gap, edge, min_neck, res, include_smd, plain, keep_old, out_path, use_rules, keepouts, report)`: the same as the command line; returns the result as with `--json`. It always writes a new board (`<board>_splitplane.kicad_pcb` by default) and never overwrites the input.
 
 The agent cannot fill zones or run DRC; open the new board in KiCad, press **B** and run DRC afterwards. Agents that read skills can use [skills/kicad-splitplane/SKILL.md](skills/kicad-splitplane/SKILL.md), which describes the whole workflow and what to do about each warning; [llms.txt](llms.txt) is a short overview for language models. Scripts can use `--json` or `sp.summary(result)` instead.
 
@@ -129,6 +138,11 @@ print("\n".join(r.log))
 open("board_split.kicad_pcb", "w").write(r.board_text)
 sp.render_png(r, "preview.png")
 sp.summary(r)        # {"ok": ..., "zones": {...}, "warnings": [...], "log": [...]}
+
+# opt-in: design rules, keepout areas, HTML report
+gap, edge, notes = sp.apply_rules(sp.design_rules("board.kicad_pcb", ["5V", "3.3V", "VBUS"]))
+r = sp.process(text, "In2.Cu", ["5V", "3.3V", "VBUS"], gap=gap, edge=edge, keepouts=True)
+sp.write_report("report.html", r, "board.kicad_pcb")
 ```
 
 ## Website
@@ -139,6 +153,7 @@ sp.summary(r)        # {"ok": ..., "zones": {...}, "warnings": [...], "log": [..
 
 - Awkward zones usually mean awkward via placement. Keep each net's vias grouped and use short fanout tracks.
 - Signals on the neighbouring layer use the split plane as return path; avoid routing them across the gaps.
+- Keepout areas are only respected with `--keepouts`; the edge clearance is also kept from them. Design rules are read from the saved project file, so save the board after changing them.
 - Zones are written as outlines without holes. Smaller zones get a higher priority so an enclosed island still fills; check the order in KiCad's Zone Manager.
 - The command line tool is tested with KiCad 10 files; KiCad 7–9 net syntax is supported too. The plugin needs KiCad 9 or newer. Arcs in the outline are approximated, blind/buried vias are handled roughly.
 

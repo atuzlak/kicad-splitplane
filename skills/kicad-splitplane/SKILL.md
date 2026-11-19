@@ -42,7 +42,11 @@ Both give the same result: `ok`, per-net `zones` (`parts`, `area_mm2`,
    user to place the vias, then run again without `include_smd` for the real
    split.
 4. **Split.** Call `split_plane(board_path, nets, layer)` (defaults: gap 0.5,
-   edge 0.5, min_neck 1.0, res 0.5 mm). It writes
+   edge 0.5, min_neck 1.0, res 0.5 mm). If the board has a project file
+   (`<board>.kicad_pro`), add `use_rules=True` so gap and edge follow its
+   design rules. If it has keepout areas (antenna, mounting holes), add
+   `keepouts=True`. For a summary the user can read or print, add
+   `report=True`. It writes
    `<board>_splitplane.kicad_pcb`, a preview `<board>_splitplane.png` and
    project copies (`.kicad_pro`/`.kicad_prl`). The input board is never
    changed. Show the user the preview PNG if you can.
@@ -65,6 +69,7 @@ Each warning names the net and usually a position in mm (KiCad coordinates).
 | `pad/via at (x, y) is not connected to its zone` | That pad or via will not connect after filling. | Move the via, or reduce `gap`. |
 | `zone runs over a NET pad/via at (x, y)` | A zone overlaps another supply's copper. | Move that via, or reduce `gap`. |
 | Islands after a run with `plain=True` | Plain mode does not connect the vias. | Run again without `plain`. |
+| `via/pad at (x, y) lies in a keepout area` | With `keepouts=True`: a via of the net sits where copper pours are forbidden. | Move the via out of the keepout, or check the keepout's layers in KiCad. |
 
 Errors (no result, `ok: false` with `error`):
 
@@ -88,6 +93,9 @@ Errors (no result, `ok: false` with `error`):
 | `plain` | false | Fast plain Voronoi, may create islands; only for a quick look |
 | `keep_old` | false | Keep existing zones of these nets on the layer (default: replaced) |
 | `out_path` | `<board>_splitplane.kicad_pcb` | Output board; must differ from the input |
+| `use_rules` | false | Gap and edge from the design rules in `<board>.kicad_pro` (net class clearances, minimum clearance, copper-to-edge); given gap/edge are minimums. Custom `.kicad_dru` rules are not read (the log notes it) |
+| `keepouts` | false | Leave the layer's keepout areas (no copper pour) free; zones go around them |
+| `report` | false | Also write `<out>_report.html` (preview, zones, warnings, settings) |
 
 ## Good to know
 
