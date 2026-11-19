@@ -14,9 +14,11 @@ the setup below once. The MCP Registry needs none: the job logs in with
 the workflow's GitHub OIDC token, which owns the `io.github.atuzlak/*`
 namespace.
 
-## 1. GitHub environment "pypi"
+## 1. GitHub environments "pypi" and "pypi-mcp"
 
-Repository → **Settings → Environments → New environment**, name `pypi`.
+Repository → **Settings → Environments → New environment**, names `pypi`
+and `pypi-mcp` (one per package: PyPI picks the publisher by repository,
+workflow and environment, so two packages need two environments).
 
 Recommended:
 - **Deployment branches and tags**: "Selected branches and tags", add the tag
@@ -34,7 +36,7 @@ Both projects do not exist on PyPI yet, so add them as *pending* publishers:
 | Owner | `atuzlak` | `atuzlak` |
 | Repository name | `kicad-splitplane` | `kicad-splitplane` |
 | Workflow name | `release.yml` | `release.yml` |
-| Environment name | `pypi` | `pypi` |
+| Environment name | `pypi` | `pypi-mcp` |
 
 The first successful upload creates each project and turns the pending
 publisher into a normal one. (If a project already exists, add the publisher
@@ -50,7 +52,7 @@ under that project's **Settings → Publishing** instead.)
      `packaging/kicad-splitplane-mcp/pyproject.toml`
    - `version` and `packages[0].version` in `server.json`
 2. Commit, then `git tag v<version> && git push origin v<version>`.
-3. The jobs run in order: release → pypi → mcp-registry. The last one waits
+3. The jobs run in order: release → pypi → pypi-mcp → mcp-registry. The last one waits
    until PyPI serves the new `kicad-splitplane-mcp` version before publishing.
 4. Afterwards, as before, open a merge request at
    <https://gitlab.com/kicad/addons/metadata> for the KiCad PCM listing.

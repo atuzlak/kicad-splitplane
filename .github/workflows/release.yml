@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: pypi
-      url: https://pypi.org/p/kicad-splitplane-mcp
+      url: https://pypi.org/p/kicad-splitplane
     permissions:
       id-token: write   # PyPI trusted publishing, no API token
       contents: read
@@ -70,28 +70,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build kicad-splitplane and kicad-splitplane-mcp
+      - name: Build kicad-splitplane
         run: |
           pip install build
-          python -m build --outdir dist/lib .
-          python -m build --outdir dist/mcp packaging/kicad-splitplane-mcp
-          ls -lR dist
-      # One upload step (and so one PyPI token) per package: a token from a
-      # pending publisher can create only one new project. skip-existing makes
-      # re-runs safe.
-      - name: Upload kicad-splitplane
-        uses: pypa/gh-action-pypi-publish@release/v1
+          python -m build --outdir dist .
+      - uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: dist/lib
-          skip-existing: true
-      - name: Upload kicad-splitplane-mcp
-        uses: pypa/gh-action-pypi-publish@release/v1
+          skip-existing: true   # re-runs are safe
+
+  # Own job and environment: PyPI picks the trusted publisher by the token's
+  # claims (repository, workflow, environment). With the same environment the
+  # token always matches kicad-splitplane's publisher and cannot create or
+  # upload kicad-splitplane-mcp.
+  pypi-mcp:
+    needs: pypi
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi-mcp
+      url: https://pypi.org/p/kicad-splitplane-mcp
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          packages-dir: dist/mcp
+          python-version: "3.12"
+      - name: Build kicad-splitplane-mcp
+        run: |
+          pip install build
+          python -m build --outdir dist packaging/kicad-splitplane-mcp
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
           skip-existing: true
 
   mcp-registry:
-    needs: pypi
+    needs: pypi-mcp
     runs-on: ubuntu-latest
     permissions:
       id-token: write   # login github-oidc for the io.github.atuzlak namespace
