@@ -73,10 +73,22 @@ jobs:
       - name: Build kicad-splitplane and kicad-splitplane-mcp
         run: |
           pip install build
-          python -m build --outdir dist .
-          python -m build --outdir dist packaging/kicad-splitplane-mcp
-          ls -l dist
-      - uses: pypa/gh-action-pypi-publish@release/v1
+          python -m build --outdir dist/lib .
+          python -m build --outdir dist/mcp packaging/kicad-splitplane-mcp
+          ls -lR dist
+      # One upload step (and so one PyPI token) per package: a token from a
+      # pending publisher can create only one new project. skip-existing makes
+      # re-runs safe.
+      - name: Upload kicad-splitplane
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/lib
+          skip-existing: true
+      - name: Upload kicad-splitplane-mcp
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/mcp
+          skip-existing: true
 
   mcp-registry:
     needs: pypi
