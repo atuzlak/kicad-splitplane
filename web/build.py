@@ -14,12 +14,12 @@ ROOT = os.path.dirname(HERE)
 def inline(match):
     path = os.path.join(HERE, match.group(1))
     data = base64.b64encode(open(path, "rb").read()).decode("ascii")
-    return f'src="data:image/png;base64,{data}"'
+    return f'src="data:image/{match.group(2)};base64,{data}"'
 
 
 def main():
     html = open(os.path.join(HERE, "index.html"), encoding="utf-8").read()
-    html = re.sub(r'src="(img/[^"]+\.png)"', inline, html)
+    html = re.sub(r'src="(img/[^"]+\.(png|gif))"', inline, html)
     out_dir = os.path.join(ROOT, "dist")
     os.makedirs(out_dir, exist_ok=True)
     out = os.path.join(out_dir, "kicad-splitplane.html")

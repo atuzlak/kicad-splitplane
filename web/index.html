@@ -3,11 +3,36 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>kicad-splitplane</title>
-<meta name="description" content="Split a KiCad power layer into one continuous copper zone per voltage. KiCad plugin, available in KiCad's Plugin and Content Manager, and command-line tool.">
+<title>kicad-splitplane: split power planes in KiCad, one zone per voltage</title>
+<meta name="description" content="Free KiCad plugin that splits an inner power layer into one continuous copper zone per supply net (5V, 3.3V, 1.8V...), computed from your vias. No islands; respects design rules and keepout areas. In KiCad's Plugin and Content Manager; also a command-line tool, Python library and MCP server for AI agents.">
+<link rel="canonical" href="https://people.ee.ethz.ch/~atuzlak/kicad-splitplane.html">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://people.ee.ethz.ch/~atuzlak/kicad-splitplane.html">
 <meta property="og:title" content="kicad-splitplane: KiCad split power planes, automatically">
-<meta property="og:description" content="One continuous zone per voltage, computed from your vias. KiCad 9/10 plugin, command-line tool and Python library.">
+<meta property="og:description" content="One continuous zone per voltage, computed from your vias. KiCad 9/10 plugin, command-line tool, Python library and MCP server.">
 <meta property="og:image" content="https://people.ee.ethz.ch/~atuzlak/img/comparison.png">
+<meta name="twitter:card" content="summary_large_image">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "kicad-splitplane",
+  "description": "Splits a KiCad power layer into exactly one continuous copper zone per supply net, computed from the nets' vias and through-hole pads. KiCad 9/10 plugin, command-line tool, Python library and MCP server.",
+  "url": "https://people.ee.ethz.ch/~atuzlak/kicad-splitplane.html",
+  "applicationCategory": "DesignApplication",
+  "applicationSubCategory": "PCB design / EDA plugin for KiCad",
+  "operatingSystem": "Windows, macOS, Linux",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "license": "https://opensource.org/licenses/MIT",
+  "downloadUrl": "https://github.com/atuzlak/kicad-splitplane/releases/latest",
+  "installUrl": "https://pypi.org/project/kicad-splitplane/",
+  "codeRepository": "https://github.com/atuzlak/kicad-splitplane",
+  "sameAs": ["https://github.com/atuzlak/kicad-splitplane", "https://pypi.org/project/kicad-splitplane/"],
+  "keywords": "KiCad, split plane, power plane, copper zone, PCB, 4-layer board, plugin, MCP",
+  "author": { "@type": "Person", "name": "Aleksandar Tuzlak", "affiliation": { "@type": "Organization", "name": "ETH Zurich" } }
+}
+</script>
 <style>
 body {
   margin: 0; background: #fff; color: #222;
@@ -117,6 +142,7 @@ footer a { color: #666; }
       </ul></li>
     <li><a href="#agents">AI agents (MCP)</a></li>
     <li><a href="#how">How it works</a></li>
+    <li><a href="#faq">Questions</a></li>
     <li><a href="#notes">Good to know</a></li>
     <li><a href="#changes">Changes</a></li>
     <li><a href="#thanks">Thanks</a></li>
@@ -134,8 +160,8 @@ footer a { color: #666; }
 <p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden> <span id="downloads" hidden>Downloaded <strong></strong> times</span><span id="stats-and" hidden> and </span><span id="clones" hidden><span class="verb">cloned</span> <strong></strong> times on GitHub</span> so far.</span></p>
 
 <figure>
-  <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone with straight 45-degree edges.">
-  <figcaption>Same board, same vias. Left: plain Voronoi split, where nets break into islands. Right: kicad-splitplane, with every voltage in one piece.</figcaption>
+  <img src="img/demo.gif" width="800" height="620" alt="Animation of the algorithm on a board with three supplies on one inner layer. Step 1: one net at a time, a Dijkstra search spreads from the vias already connected until it reaches the nearest unconnected via, and that path is added, until each net's vias form one tree; routes of different nets never cross. Step 2: every spot of the layer goes to the closest tree, measured around other copper. Step 3: the staircase borders are straightened into 0, 45 and 90 degree segments with a gap between the zones. Result: one continuous zone per supply.">
+  <figcaption>How it works, step by step on the demo board: connect each net's vias (Dijkstra searches), split the layer by nearest route, clean up the borders.</figcaption>
 </figure>
 
 <p>On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to contain every via of its net, nothing of the other nets, and be one continuous piece of copper. Drawing those outlines by hand is trial and error. This tool does it for you: it connects each net's vias with a path, splits the layer around those paths, and draws the borders with straight 0°/45°/90° edges.</p>
@@ -287,6 +313,20 @@ sp.write_report("report.html", r, "board.kicad_pcb")</code></pre>
   <img src="img/obstacles.png" width="1560" height="624" alt="Two previews of a test board with five supplies and a long pin header across the middle. Left: raw grid outlines with staircase borders. Right: the same split with straight 0, 45 and 90 degree borders. In both, the VDDA zone goes around the end of the pin header instead of between its pins.">
   <figcaption>Test board with five supplies and a pin header (grey) across the middle. VDDA, which has vias on both sides, goes around the end of the header instead of squeezing between its pins. Left: raw grid outlines, right: smoothed.</figcaption>
 </figure>
+
+<h2 id="faq">Questions</h2>
+<h3>How do I put several voltages on one inner layer in KiCad?</h3>
+<p>Draw one copper zone per supply net on that layer, so that each zone contains all vias of its net and none of the others. kicad-splitplane computes those outlines from where your vias are and writes the zones into the board: in KiCad open it from the toolbar, pick the layer and the nets, press Preview and Apply.</p>
+<h3>Why does my split power plane break into islands?</h3>
+<p>A split by nearest via (a Voronoi diagram) cuts a net apart whenever another supply's vias lie between its vias, and KiCad then removes or isolates the pieces when filling. kicad-splitplane first connects each net's vias with a path and splits the layer around those paths, so every net stays one piece. A via that no continuous zone can reach is reported with a position to move it to.</p>
+<h3>Which KiCad versions does it work with? Do I need KiCad installed?</h3>
+<p>The plugin needs KiCad 9 or newer (it uses the KiCad API) and is installed from KiCad's Plugin and Content Manager. The command-line tool and the Python library read <code>.kicad_pcb</code> files from KiCad 7 to 10 and don't need KiCad at all.</p>
+<h3>Does it follow my design rules and keepout areas?</h3>
+<p>Optionally: with <code>--rules</code> the gap between zones comes from the board's net class clearances, with <code>--keepouts</code> the zones are planned around keepout areas. Both are checkboxes in the plugin dialog. See <a href="#extras">Design rules, keepout areas and report</a>.</p>
+<h3>Can AI assistants use it?</h3>
+<p>Yes. It includes an MCP server (<code>uvx kicad-splitplane-mcp</code>), so assistants such as Claude, Cursor or VS Code can list a board's supply nets and split the plane; see <a href="#agents">Use with AI agents</a>.</p>
+<h3>Is it free?</h3>
+<p>Yes, it is open source under the MIT license. The code is on <a href="https://github.com/atuzlak/kicad-splitplane">GitHub</a>.</p>
 
 <h2 id="notes">Good to know</h2>
 <ul>

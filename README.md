@@ -6,7 +6,7 @@ Split a KiCad power layer into **exactly one continuous copper zone per voltage*
 
 **Available in [KiCad](https://www.kicad.org)'s official Plugin and Content Manager**: search for *kicad-splitplane* and press Install ([listing](https://gitlab.com/kicad/addons/metadata/-/tree/main/packages/ch.ethz.atuzlak.splitplane)).
 
-![Plain Voronoi vs. kicad-splitplane on the demo board](web/img/comparison.png)
+![Animation of the algorithm: each net's vias are connected by Dijkstra searches, the layer is split by nearest route, the borders are cleaned up: one continuous zone per supply](web/img/demo.gif)
 
 On a 4-layer board the inner power layer is often shared by several supplies (5V, 3.3V, 1.8V…). Each supply needs its own zone, and each zone has to
 
@@ -147,7 +147,7 @@ sp.write_report("report.html", r, "board.kicad_pcb")
 
 ## Website
 
-`web/` contains the documentation page; `python web/make_figures.py` renders its figures. `./deploy.sh` builds it as one self-contained file (`dist/kicad-splitplane.html`), `./deploy.sh --serve` previews it locally, `./deploy.sh user@host:public_html` uploads it.
+`web/` contains the documentation page; `python web/make_figures.py` renders its figures and `python web/make_gif.py` the animation. `./deploy.sh` builds it as one self-contained file (`dist/kicad-splitplane.html`), `./deploy.sh --serve` previews it locally, `./deploy.sh user@host:public_html` uploads it.
 
 ## Tips and limitations
 
