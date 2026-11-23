@@ -1,10 +1,13 @@
-# Daily: add the last 14 days of GitHub clone traffic to clones.json on the
-# 'stats' branch, which the web page reads (GitHub itself forgets after 14 days).
+# Daily: add the last 14 days of GitHub clone traffic to clones.json, and the
+# daily PyPI downloads (from pypistats.org) to pypi.json, both on the 'stats'
+# branch, which the web page reads (GitHub forgets clones after 14 days,
+# pypistats.org forgets downloads after 180 days).
 #
 # Needs a repository secret TRAFFIC_TOKEN: a fine-grained personal access
 # token for this repository only, with "Administration: Read-only" (the
 # traffic API is not available to the workflow's own token). The run stops
-# with an error naming the secret if it is missing.
+# with an error naming the secret if it is missing; the PyPI numbers are still
+# recorded. PyPI needs no token.
 name: clone-stats
 
 on:
@@ -24,7 +27,14 @@ jobs:
         with:
           ref: stats
           path: stats
-      - name: Merge the last 14 days
+      - name: Merge the PyPI downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -sSf --retry 3 "https://pypistats.org/api/packages/kicad-splitplane/overall?mirrors=false" > pypi-recent.json
+          python3 .github/pypi_stats.py stats/pypi.json < pypi-recent.json
+      - name: Merge the last 14 days of clones
+        if: ${{ !cancelled() }}
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
@@ -37,18 +47,20 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/traffic/clones" > clones-14d.json
           python3 .github/clone_stats.py stats/clones.json < clones-14d.json
       - name: Commit if the counts changed
+        if: ${{ !cancelled() }}
         shell: bash
         working-directory: stats
         run: |
           set -euo pipefail
           # The "updated" time changes on every run; only commit when the
-          # clone numbers themselves changed.
-          if git diff --quiet -I '"updated":' -- clones.json; then
-            echo "No new clones; nothing to commit."
+          # numbers themselves changed (or pypi.json is new).
+          git add --intent-to-add -- *.json
+          if git diff --quiet -I '"updated":' -- clones.json pypi.json; then
+            echo "No new clones or downloads; nothing to commit."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add clones.json
-          git commit -m "Clone statistics $(date -u +%F)"
+          git add -- *.json
+          git commit -m "Clone and PyPI statistics $(date -u +%F)"
           git push

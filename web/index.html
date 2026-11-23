@@ -157,7 +157,7 @@ footer a { color: #666; }
 <main>
 <h1 id="overview">kicad-splitplane</h1>
 <p class="lede">Split a KiCad power layer into one continuous copper zone per voltage, computed from where your vias are. Runs as a KiCad plugin, from the command line, or through AI agents (MCP).</p>
-<p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden> <span id="downloads" hidden>Downloaded <strong></strong> times</span><span id="stats-and" hidden> and </span><span id="clones" hidden><span class="verb">cloned</span> <strong></strong> times on GitHub</span> so far.</span></p>
+<p class="note">Available in <a href="https://www.kicad.org">KiCad</a>'s official <strong>Plugin and Content Manager</strong>: search for <strong>kicad-splitplane</strong> and press Install. See <a href="#install-plugin">Install</a>.<span id="stats" hidden></span></p>
 
 <figure>
   <img src="img/comparison.png" width="1560" height="624" alt="Two board previews side by side. Left: a plain Voronoi split where the +3V3 and +5V nets break into separate islands. Right: kicad-splitplane, where +1V8, +3V3 and +5V each form one connected zone with straight 45-degree edges.">
@@ -392,38 +392,57 @@ sp.write_report("report.html", r, "board.kicad_pcb")</code></pre>
   update();
 })();
 
-// Counters. Downloads: installs from KiCad's Plugin and Content Manager and
-// manual downloads both fetch the release zip from GitHub (API limit: 60
-// requests/hour per visitor). Clones: GitHub keeps clone numbers for 14 days
-// only, so a daily workflow records them in clones.json on the 'stats'
-// branch. Each part stays hidden if its source is unreachable.
+// Counters, shown as a total with a breakdown: "Used 1,625 times so far:
+// 1,234 KiCad plugin installs, 302 installs from PyPI and 89 clones on
+// GitHub." KiCad plugin installs: KiCad's Plugin and Content Manager and
+// manual downloads (Install from File) both fetch the release zip from
+// GitHub, which counts them together (API limit: 60 requests/hour per
+// visitor). PyPI and clones: their sources forget old days
+// (pypistats.org after 180, GitHub after 14) and pypistats.org cannot be read
+// from a browser, so a daily workflow records them in pypi.json and
+// clones.json on the 'stats' branch. Each part is left out if its source is
+// unreachable.
 (function () {
-  var shown = {};
-  function show(id, n) {
-    if (!n) return;
-    var el = document.getElementById(id);
-    el.querySelector("strong").textContent = n.toLocaleString("en-US");
+  var parts = [
+    { key: "downloads", one: "KiCad plugin install", many: "KiCad plugin installs", where: "" },
+    { key: "pypi", one: "install", many: "installs", where: " from PyPI" },
+    { key: "clones", one: "clone", many: "clones", where: " on GitHub" }
+  ];
+  var counts = {};
+  function fmt(n) { return n.toLocaleString("en-US"); }
+  function render() {
+    var shown = parts.filter(function (p) { return counts[p.key]; });
+    if (!shown.length) return;
+    var total = shown.reduce(function (t, p) { return t + counts[p.key]; }, 0);
+    var el = document.getElementById("stats");
+    var n = document.createElement("strong");
+    n.textContent = fmt(total);
+    el.textContent = " Used ";
+    el.append(n, (total === 1 ? " time" : " times") + " so far: ");
+    shown.forEach(function (p, i) {
+      if (i > 0) el.append(i === shown.length - 1 ? " and " : ", ");
+      var c = counts[p.key];
+      el.append(fmt(c) + " " + (c === 1 ? p.one : p.many) + p.where);
+    });
+    el.append(".");
     el.hidden = false;
-    shown[id] = true;
-    document.getElementById("stats-and").hidden = !(shown.downloads && shown.clones);
-    document.querySelector("#clones .verb").textContent = shown.downloads ? "cloned" : "Cloned";
-    document.getElementById("stats").hidden = false;
   }
+  function set(key, n) { if (n) { counts[key] = n; render(); } }
   function json(url) {
     return fetch(url).then(function (r) { if (!r.ok) throw r.status; return r.json(); });
   }
+  var stats = "https://raw.githubusercontent.com/atuzlak/kicad-splitplane/stats/";
   json("https://api.github.com/repos/atuzlak/kicad-splitplane/releases?per_page=100")
     .then(function (releases) {
       var n = 0;
       releases.forEach(function (rel) {
         rel.assets.forEach(function (a) { if (/-pcm\.zip$/.test(a.name)) n += a.download_count; });
       });
-      show("downloads", n);
+      set("downloads", n);
     })
     .catch(function () {});
-  json("https://raw.githubusercontent.com/atuzlak/kicad-splitplane/stats/clones.json")
-    .then(function (d) { show("clones", d.count); })
-    .catch(function () {});
+  json(stats + "pypi.json").then(function (d) { set("pypi", d.count); }).catch(function () {});
+  json(stats + "clones.json").then(function (d) { set("clones", d.count); }).catch(function () {});
 })();
 </script>
 <script data-goatcounter="https://atuzlak.goatcounter.com/count" async src="https://gc.zgo.at/count.js"></script>
